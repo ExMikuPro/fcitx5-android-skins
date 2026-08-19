@@ -418,6 +418,12 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         }
     }
 
+    fun useBdsChrome() {
+        view.setBackgroundColor(Color.TRANSPARENT)
+        idleUi.menuButton.visibility = View.INVISIBLE
+        idleUi.hideKeyboardButton.visibility = View.INVISIBLE
+    }
+
     override fun onScopeSetupFinished(scope: DynamicScope) {
         ClipboardManager.lastEntry?.let {
             val now = System.currentTimeMillis()

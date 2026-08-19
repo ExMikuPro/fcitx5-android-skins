@@ -5,6 +5,7 @@
 package org.fcitx.fcitx5.android.input.keyboard
 
 import android.text.InputType
+import android.content.res.Configuration
 import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -15,6 +16,7 @@ import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.CapabilityFlags
 import org.fcitx.fcitx5.android.core.InputMethodEntry
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
+import org.fcitx.fcitx5.android.data.theme.bds.BdsSkinManager
 import org.fcitx.fcitx5.android.input.bar.KawaiiBarComponent
 import org.fcitx.fcitx5.android.input.broadcast.InputBroadcastReceiver
 import org.fcitx.fcitx5.android.input.broadcast.ReturnKeyDrawableComponent
@@ -23,6 +25,7 @@ import org.fcitx.fcitx5.android.input.dependency.inputMethodService
 import org.fcitx.fcitx5.android.input.dependency.theme
 import org.fcitx.fcitx5.android.input.picker.PickerWindow
 import org.fcitx.fcitx5.android.input.popup.PopupActionListener
+import org.fcitx.fcitx5.android.input.keyboard.bds.BdsKeyboard
 import org.fcitx.fcitx5.android.input.popup.PopupComponent
 import org.fcitx.fcitx5.android.input.wm.EssentialWindow
 import org.fcitx.fcitx5.android.input.wm.InputWindow
@@ -66,8 +69,12 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
     private lateinit var keyboardView: FrameLayout
 
     private val keyboards: HashMap<String, BaseKeyboard> by lazy {
+        val bds = if (context.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT) {
+            BdsSkinManager.skinForTheme(theme.name)
+        } else null
         hashMapOf(
-            TextKeyboard.Name to TextKeyboard(context, theme),
+            TextKeyboard.Name to (bds?.let { BdsKeyboard(context, theme, it) }
+                ?: TextKeyboard(context, theme)),
             NumberKeyboard.Name to NumberKeyboard(context, theme)
         )
     }

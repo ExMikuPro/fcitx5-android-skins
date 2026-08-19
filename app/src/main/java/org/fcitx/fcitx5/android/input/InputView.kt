@@ -7,6 +7,7 @@ package org.fcitx.fcitx5.android.input
 
 import android.annotation.SuppressLint
 import android.content.res.Configuration
+import android.graphics.Color
 import android.graphics.Point
 import android.os.Build
 import android.view.View
@@ -25,6 +26,7 @@ import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreferenceProvider
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
+import org.fcitx.fcitx5.android.data.theme.bds.BdsSkinManager
 import org.fcitx.fcitx5.android.input.bar.KawaiiBarComponent
 import org.fcitx.fcitx5.android.input.broadcast.InputBroadcaster
 import org.fcitx.fcitx5.android.input.broadcast.PreeditEmptyStateComponent
@@ -35,6 +37,8 @@ import org.fcitx.fcitx5.android.input.keyboard.CommonKeyActionListener
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardHeightPercentBase.DisplayMetrics
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardHeightPercentBase.RealSize
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardWindow
+import org.fcitx.fcitx5.android.input.keyboard.bds.BdsCandidateBackgroundView
+import org.fcitx.fcitx5.android.input.keyboard.bds.BdsViewportCalculator
 import org.fcitx.fcitx5.android.input.picker.emojiPicker
 import org.fcitx.fcitx5.android.input.picker.emoticonPicker
 import org.fcitx.fcitx5.android.input.picker.symbolPicker
@@ -66,6 +70,7 @@ import splitties.views.dsl.core.view
 import splitties.views.dsl.core.wrapContent
 import splitties.views.imageDrawable
 import timber.log.Timber
+import kotlin.math.roundToInt
 
 @SuppressLint("ViewConstructor")
 class InputView(
@@ -156,6 +161,21 @@ class InputView(
 
     private val keyboardHeightPx: Int
         get() {
+            if (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT) {
+                BdsSkinManager.skinForTheme(theme.name)?.portraitPinyin26?.let { layout ->
+                    val viewportWidth = resources.displayMetrics.widthPixels
+                    val height = BdsViewportCalculator.portraitPanelHeight(
+                        layout.designWidth,
+                        layout.designHeight,
+                        viewportWidth
+                    )
+                    Timber.d(
+                        "BDS: keyboard height from PANEL.SIZE=${layout.designWidth}x${layout.designHeight}, " +
+                            "viewportWidth=$viewportWidth, legacyPortraitScale=1.05, height=$height"
+                    )
+                    return height
+                }
+            }
             val baseType = keyboardHeightPercentBase.getValue()
             val base = when (baseType) {
                 DisplayMetrics -> resources.displayMetrics.heightPixels
@@ -178,6 +198,9 @@ class InputView(
 
     private val keyboardSidePaddingPx: Int
         get() {
+            if (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT &&
+                BdsSkinManager.skinForTheme(theme.name) != null
+            ) return 0
             val value = when (resources.configuration.orientation) {
                 Configuration.ORIENTATION_LANDSCAPE -> keyboardSidePaddingLandscape
                 else -> keyboardSidePadding
@@ -187,11 +210,32 @@ class InputView(
 
     private val keyboardBottomPaddingPx: Int
         get() {
+            if (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT &&
+                BdsSkinManager.skinForTheme(theme.name) != null
+            ) return 0
             val value = when (resources.configuration.orientation) {
                 Configuration.ORIENTATION_LANDSCAPE -> keyboardBottomPaddingLandscape
                 else -> keyboardBottomPadding
             }.getValue()
             return dp(value)
+        }
+
+    private val bdsSkin = if (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT) {
+        BdsSkinManager.skinForTheme(theme.name)
+    } else null
+
+    private val bdsCandidateHeightPx: Int?
+        get() {
+            val skin = bdsSkin ?: return null
+            val candidate = skin.portraitCandidate ?: return null
+            val width = resources.displayMetrics.widthPixels
+            val style = candidate.backgroundStyle?.let(skin.styles::get)
+            val ref = style?.normalImage
+            val tileHeight = ref?.let { imageRef ->
+                skin.image(imageRef.atlas, width)?.tiles?.get(imageRef.tile)?.source?.height
+            }
+            val designHeight = tileHeight ?: candidate.viewRect.height
+            return (designHeight * width.toFloat() / skin.portraitPinyin26.designWidth).roundToInt()
         }
 
     @Keep
@@ -224,6 +268,11 @@ class InputView(
 
         customBackground.imageDrawable = theme.backgroundDrawable(keyBorder)
 
+        if (bdsSkin != null) {
+            customBackground.setBackgroundColor(Color.TRANSPARENT)
+            kawaiiBar.useBdsChrome()
+        }
+
         keyboardView = constraintLayout {
             // allow MotionEvent to be delivered to keyboard while pressing on padding views.
             // although it should be default for apps targeting Honeycomb (3.0, API 11) and higher,
@@ -233,7 +282,13 @@ class InputView(
                 centerVertically()
                 centerHorizontally()
             })
-            add(kawaiiBar.view, lParams(matchParent, dp(KawaiiBarComponent.HEIGHT)) {
+            bdsSkin?.let { skin ->
+                add(BdsCandidateBackgroundView(context, skin), lParams(matchParent, bdsCandidateHeightPx ?: dp(KawaiiBarComponent.HEIGHT)) {
+                    topOfParent()
+                    centerHorizontally()
+                })
+            }
+            add(kawaiiBar.view, lParams(matchParent, bdsCandidateHeightPx ?: dp(KawaiiBarComponent.HEIGHT)) {
                 topOfParent()
                 centerHorizontally()
             })
@@ -319,9 +374,14 @@ class InputView(
     }
 
     override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
+        val navigationInset = getNavBarBottomInset(insets)
         bottomPaddingSpace.updateLayoutParams<LayoutParams> {
-            bottomMargin = getNavBarBottomInset(insets)
+            bottomMargin = if (bdsSkin != null) 0 else navigationInset
         }
+        // This IME window uses LAYOUT_HIDE_NAVIGATION and can therefore extend below
+        // the physical display. Translating the complete BDS surface preserves its
+        // measured viewport while keeping rendering and touch geometry in sync.
+        keyboardView.translationY = if (bdsSkin != null) -navigationInset.toFloat() else 0f
         return insets
     }
 

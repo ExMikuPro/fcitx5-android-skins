@@ -127,6 +127,8 @@
     <string name="popup_on_key_press">按键时弹出显示字符</string>
     <string name="disable_animation">禁用动画</string>
     <string name="import_from_file">导入文件…</string>
+    <string name="import_bds_skin">导入 BDS 皮肤…</string>
+    <string name="bds_skin_imported">已导入并启用 %1$s</string>
     <string name="duplicate_builtin_theme">复制内置主题…</string>
     <string name="exception_logcat_created">Logcat 进程已创建</string>
     <string name="exception_quickphrase_parse">无法解析快速输入条目： %1$s</string>

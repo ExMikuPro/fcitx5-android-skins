@@ -127,6 +127,8 @@
     <string name="popup_on_key_press">Popup on key press</string>
     <string name="disable_animation">Disable animation</string>
     <string name="import_from_file">Import from file…</string>
+    <string name="import_bds_skin">Import BDS skin…</string>
+    <string name="bds_skin_imported">Imported and enabled %1$s</string>
     <string name="duplicate_builtin_theme">Duplicate builtin theme…</string>
     <string name="exception_logcat_created">Logcat process is already created</string>
     <string name="exception_quickphrase_parse">Failed to parse quick phrase line: %1$s</string>

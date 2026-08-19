@@ -21,6 +21,7 @@ import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeFilesManager
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
+import org.fcitx.fcitx5.android.data.theme.bds.BdsSkinManager
 import org.fcitx.fcitx5.android.ui.common.withLoadingDialog
 import org.fcitx.fcitx5.android.utils.applyNavBarInsetsBottomPadding
 import org.fcitx.fcitx5.android.utils.importErrorDialog
@@ -34,6 +35,8 @@ class ThemeListFragment : Fragment() {
     private lateinit var imageLauncher: ActivityResultLauncher<Theme.Custom?>
 
     private lateinit var importLauncher: ActivityResultLauncher<String>
+
+    private lateinit var bdsImportLauncher: ActivityResultLauncher<Array<String>>
 
     private lateinit var exportLauncher: ActivityResultLauncher<String>
 
@@ -107,6 +110,31 @@ class ThemeListFragment : Fragment() {
                     }
                 }
             }
+        bdsImportLauncher =
+            registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                if (uri == null) return@registerForActivityResult
+                val ctx = requireContext()
+                lifecycleScope.withLoadingDialog(ctx) {
+                    try {
+                        val fileName = ctx.contentResolver.queryFileName(uri)
+                        val (_, theme) = withContext(Dispatchers.IO) {
+                            ctx.contentResolver.openInputStream(uri)!!.use { input ->
+                                BdsSkinManager.import(input, fileName)
+                            }
+                        }
+                        val existing = ThemeManager.getTheme(theme.name)
+                        ThemeManager.saveTheme(theme)
+                        if (existing == null) themeListAdapter.prependTheme(theme)
+                        else themeListAdapter.replaceTheme(theme)
+                        if (!followSystemDayNightTheme) {
+                            ThemeManager.setNormalModeTheme(theme)
+                        }
+                        ctx.toast(getString(R.string.bds_skin_imported, theme.name))
+                    } catch (e: Exception) {
+                        ctx.importErrorDialog(e)
+                    }
+                }
+            }
         exportLauncher =
             registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
                 if (uri == null) return@registerForActivityResult
@@ -163,6 +191,7 @@ class ThemeListFragment : Fragment() {
         val actions = arrayOf(
             getString(R.string.choose_image),
             getString(R.string.import_from_file),
+            getString(R.string.import_bds_skin),
             getString(R.string.duplicate_builtin_theme)
         )
         AlertDialog.Builder(ctx)
@@ -172,7 +201,10 @@ class ThemeListFragment : Fragment() {
                 when (i) {
                     0 -> imageLauncher.launch(null)
                     1 -> importLauncher.launch("application/zip")
-                    2 -> {
+                    2 -> bdsImportLauncher.launch(
+                        arrayOf("application/zip", "application/octet-stream", "*/*")
+                    )
+                    3 -> {
                         val view = ResponsiveThemeListView(ctx).apply {
                             // force AlertDialog's customPanel to grow
                             minimumHeight = Int.MAX_VALUE
