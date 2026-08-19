@@ -334,7 +334,12 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     }
 
     private val candidateUi by lazy {
-        CandidateUi(context, theme, horizontalCandidate.view).apply {
+        CandidateUi(
+            context,
+            theme,
+            horizontalCandidate.view,
+            horizontalCandidate.bdsRenderer
+        ).apply {
             expandButton.apply {
                 swipeEnabled = true
                 swipeThresholdY = dp(HEIGHT.toFloat())

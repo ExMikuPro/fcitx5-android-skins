@@ -32,6 +32,7 @@ import org.fcitx.fcitx5.android.data.theme.bds.BdsSkin
 import org.fcitx.fcitx5.android.data.theme.bds.BdsStyle
 import org.fcitx.fcitx5.android.data.theme.bds.BdsTile
 import org.fcitx.fcitx5.android.input.keyboard.BaseKeyboard
+import org.fcitx.fcitx5.android.input.broadcast.ReturnKeyAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction
 import org.fcitx.fcitx5.android.input.keyboard.NumberKeyboard
 import org.fcitx.fcitx5.android.input.picker.PickerWindow
@@ -56,6 +57,10 @@ class BdsKeyboard(context: Context, theme: Theme, private val skin: BdsSkin) :
     override fun onAttach() {
         capsState = CapsState.None
         surface.caps = false
+    }
+
+    override fun onReturnActionUpdate(action: ReturnKeyAction) {
+        surface.returnAction = action
     }
 
     override fun onAction(action: KeyAction, source: org.fcitx.fcitx5.android.input.keyboard.KeyActionListener.Source) {
@@ -129,6 +134,16 @@ private class BdsKeyboardSurface(
         set(value) {
             field = value
             childrenViews.forEach { it.invalidate() }
+        }
+
+    var returnAction: ReturnKeyAction = ReturnKeyAction.Enter
+        set(value) {
+            if (field == value) return
+            field = value
+            childrenViews.forEach { child ->
+                child.returnAction = value
+                child.invalidate()
+            }
         }
 
     private val decorations = layout.decorations.map { key ->
@@ -218,6 +233,8 @@ private class BdsKeyView(
     private var downX = 0f
     private var downY = 0f
 
+    var returnAction: ReturnKeyAction = ReturnKeyAction.Enter
+
     init {
         isClickable = !isDecoration
         if (!isDecoration) {
@@ -265,9 +282,15 @@ private class BdsKeyView(
             viewRect.right - layout.left,
             viewRect.bottom - layout.top
         )
-        key.backgroundStyle?.let { drawStyle(canvas, it, local, isPressed, true, null) }
-        key.foregroundStyles.forEachIndexed { index, styleId ->
-            val offset = skin.portraitPinyin26.offsets[key.positionTypes.getOrNull(index)]
+        val variant = BdsKeyStateResolver.resolve(
+            key, returnAction, skin.portraitPinyin26.variants
+        )
+        val backgroundStyle = variant?.backgroundStyle ?: key.backgroundStyle
+        val foregroundStyles = variant?.foregroundStyles ?: key.foregroundStyles
+        val positionTypes = variant?.positionTypes ?: key.positionTypes
+        backgroundStyle?.let { drawStyle(canvas, it, local, isPressed, true, null) }
+        foregroundStyles.forEachIndexed { index, styleId ->
+            val offset = skin.portraitPinyin26.offsets[positionTypes.getOrNull(index)]
             drawStyle(canvas, styleId, local, isPressed, false, offset)
         }
     }

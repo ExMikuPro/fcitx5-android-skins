@@ -6,6 +6,8 @@
 package org.fcitx.fcitx5.android.input.candidates
 
 import android.content.Context
+import android.graphics.drawable.Drawable
+import android.util.TypedValue
 import androidx.core.text.buildSpannedString
 import androidx.core.text.color
 import org.fcitx.fcitx5.android.core.CandidateWord
@@ -22,6 +24,9 @@ import splitties.views.dsl.core.wrapContent
 import splitties.views.gravityCenter
 
 class CandidateItemUi(override val ctx: Context, val theme: Theme) : Ui {
+
+    private var foregroundColor = theme.candidateTextColor
+    private var commentColor = theme.candidateCommentColor
 
     private val text = view(::AutoScaleTextView) {
         scaleMode = AutoScaleTextView.Mode.Proportional
@@ -45,20 +50,30 @@ class CandidateItemUi(override val ctx: Context, val theme: Theme) : Ui {
     }
 
     fun updateCandidate(candidate: CandidateWord) {
-        val fg = theme.candidateTextColor
-        val altFg = theme.candidateCommentColor
         text.text = buildSpannedString {
-            color(fg) {
+            color(foregroundColor) {
                 append(candidate.text)
             }
             if (candidate.comment.isNotBlank()) {
                 if (candidate.spaceBetweenComment) {
                     append(" ")
                 }
-                color(altFg) {
+                color(commentColor) {
                     append(candidate.comment)
                 }
             }
         }
+    }
+
+    fun applyBdsAppearance(
+        textSizePx: Float,
+        foregroundColor: Int,
+        commentColor: Int,
+        itemBackground: Drawable?
+    ) {
+        text.setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx)
+        this.foregroundColor = foregroundColor
+        this.commentColor = commentColor
+        root.background = itemBackground
     }
 }

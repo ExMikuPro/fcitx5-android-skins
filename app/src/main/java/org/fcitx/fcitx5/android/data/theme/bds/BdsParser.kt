@@ -53,9 +53,9 @@ object BdsParser {
         }.toMap()
         val candidateSection = gen.section("CAND").orEmpty()
         val candidateViewRect = parseRect(candidateSection.value("VIEW_RECT"))
-        val candidateConfig = candidateSection.value("LAYOUT_NAME")?.let { layoutName ->
-            port.childIgnoreCase("$layoutName.cnd")?.let(BdsIni::parse)?.section("CAND").orEmpty()
-        }.orEmpty()
+        val candidateDefinition = candidateSection.value("LAYOUT_NAME")?.let { layoutName ->
+            port.childIgnoreCase("$layoutName.cnd")?.let(BdsCandidateParser::parse)
+        }
 
         val css = BdsIni.parse(cssFile)
         val styles = css.sections.mapNotNull { (section, values) ->
@@ -63,12 +63,26 @@ object BdsParser {
             val styleId = section.substring(5).toIntOrNull() ?: return@mapNotNull null
             styleId to parseStyle(styleId, values)
         }.toMap()
+        val animations = portRes.childIgnoreCase("anim.ini")?.let(BdsIni::parse)?.sections
+            ?.mapNotNull { (section, values) ->
+                if (!section.startsWith("ANIM", ignoreCase = true)) return@mapNotNull null
+                val animationId = section.substring(4).toIntOrNull() ?: return@mapNotNull null
+                animationId to BdsAnimation(
+                    id = animationId,
+                    path = values.value("ANIM_PATH"),
+                    properties = values
+                )
+            }?.toMap().orEmpty()
 
         val ini = BdsIni.parse(layoutFile)
         val unsupported = mutableListOf<String>()
         val parsedKeys = ini.sections.mapNotNull { (section, values) ->
             if (!section.startsWith("KEY", ignoreCase = true)) return@mapNotNull null
             parseKey(section, values, unsupported)
+        }
+        val variants = ini.sections.mapNotNull { (section, values) ->
+            if (!section.startsWith("TIP", ignoreCase = true)) return@mapNotNull null
+            parseKeyVariant(section, values)
         }
         val (keys, decorations) = parsedKeys.partition { it.actions.isNotEmpty() }
         val imageNames = styles.values.flatMap {
@@ -110,17 +124,19 @@ object BdsParser {
                 backgroundStyle = panel.value("BACK_STYLE")?.toIntOrNull(),
                 decorations = decorations,
                 keys = keys,
+                variants = variants,
                 offsets = offsets
             ),
-            portraitCandidate = candidateViewRect?.let {
+            portraitCandidate = candidateViewRect?.let { viewRect ->
+                val definition = candidateDefinition ?: return@let null
                 BdsCandidateLayout(
-                    viewRect = it,
-                    backgroundStyle = candidateConfig.value("BACK_STYLE")?.toIntOrNull(),
-                    foregroundStyle = candidateConfig.value("FORE_STYLE")?.toIntOrNull(),
-                    properties = candidateSection + candidateConfig
+                    viewRect = viewRect,
+                    definition = definition,
+                    properties = candidateSection
                 )
             },
             styles = styles,
+            animations = animations,
             images = images,
             resourceBuckets = resourceBuckets,
             unsupportedProperties = unsupported
@@ -167,6 +183,17 @@ object BdsParser {
         fontSize = values.value("FONT_SIZE")?.toFloatOrNull(),
         fontWeight = values.value("FONT_WEIGHT")?.toIntOrNull(),
         text = values.value("SHOW"),
+        properties = values
+    )
+
+    private fun parseKeyVariant(section: String, values: Map<String, String>) = BdsKeyVariant(
+        section = section,
+        backgroundStyle = values.value("BACK_STYLE")?.toIntOrNull(),
+        foregroundStyles = parseIntList(values.value("FORE_STYLE")),
+        positionTypes = parseIntList(values.value("POS_TYPE")),
+        actions = directions.mapNotNull { (name, direction) ->
+            values.value(name)?.takeIf { it.isNotBlank() }?.let { direction to BdsAction(it) }
+        }.toMap(),
         properties = values
     )
 

@@ -20,6 +20,7 @@ import org.fcitx.fcitx5.android.data.theme.bds.BdsSkinManager
 import org.fcitx.fcitx5.android.input.bar.KawaiiBarComponent
 import org.fcitx.fcitx5.android.input.broadcast.InputBroadcastReceiver
 import org.fcitx.fcitx5.android.input.broadcast.ReturnKeyDrawableComponent
+import org.fcitx.fcitx5.android.input.broadcast.ReturnKeyAction
 import org.fcitx.fcitx5.android.input.dependency.fcitx
 import org.fcitx.fcitx5.android.input.dependency.inputMethodService
 import org.fcitx.fcitx5.android.input.dependency.theme
@@ -119,6 +120,7 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
             keyboardView.apply { add(it, lParams(matchParent, matchParent)) }
             it.onAttach()
             it.onReturnDrawableUpdate(returnKeyDrawable.resourceId)
+            it.onReturnActionUpdate(returnKeyDrawable.action)
             it.onInputMethodUpdate(fcitx.runImmediately { inputMethodEntryCached })
         }
     }
@@ -164,6 +166,10 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
 
     override fun onReturnKeyDrawableUpdate(resourceId: Int) {
         currentKeyboard?.onReturnDrawableUpdate(resourceId)
+    }
+
+    override fun onReturnKeyActionUpdate(action: ReturnKeyAction) {
+        currentKeyboard?.onReturnActionUpdate(action)
     }
 
     override fun onAttached() {

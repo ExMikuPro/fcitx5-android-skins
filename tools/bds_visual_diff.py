@@ -122,6 +122,8 @@ def main() -> None:
 
     mean_channel_error = absolute_error_sum / max(1, included * 3)
     metrics = {
+        "width": reference.width,
+        "height": reference.height,
         "reference_full_size": list(reference_full.size),
         "current_full_size": list(current_full.size),
         "reference_crop": list(reference_box) if reference_box else None,
@@ -135,8 +137,11 @@ def main() -> None:
         "different_pixel_ratio": different / max(1, included),
         "difference_bounding_box": list(diff.getbbox()) if diff.getbbox() else None,
         "mean_absolute_channel_error": mean_channel_error,
+        "mae": mean_channel_error,
         "maximum_channel_error": max_error,
+        "max_error": max_error,
         "mean_error_similarity": 1.0 - mean_channel_error / 255.0,
+        "similarity": 1.0 - mean_channel_error / 255.0,
         "histogram_channel_pixels": channel_pixels,
     }
     (args.output_dir / "metrics.json").write_text(

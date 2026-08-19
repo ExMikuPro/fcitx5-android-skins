@@ -11,6 +11,7 @@ data class BdsSkin(
     val portraitPinyin26: BdsLayout,
     val portraitCandidate: BdsCandidateLayout?,
     val styles: Map<Int, BdsStyle>,
+    val animations: Map<Int, BdsAnimation>,
     val images: Map<String, BdsImage>,
     val resourceBuckets: Map<Int, Map<String, BdsImage>>,
     val unsupportedProperties: List<String>
@@ -27,10 +28,12 @@ data class BdsSkin(
 
 data class BdsCandidateLayout(
     val viewRect: BdsRect,
-    val backgroundStyle: Int?,
-    val foregroundStyle: Int?,
+    val definition: BdsCandidateDefinition,
     val properties: Map<String, String>
-)
+) {
+    val backgroundStyle get() = definition.backgroundStyle
+    val foregroundStyle get() = definition.foregroundStyle
+}
 
 data class BdsMetadata(
     val name: String,
@@ -46,7 +49,17 @@ data class BdsLayout(
     val backgroundStyle: Int?,
     val decorations: List<BdsKey>,
     val keys: List<BdsKey>,
+    val variants: List<BdsKeyVariant>,
     val offsets: Map<Int, BdsPoint>
+)
+
+data class BdsKeyVariant(
+    val section: String,
+    val backgroundStyle: Int?,
+    val foregroundStyles: List<Int>,
+    val positionTypes: List<Int>,
+    val actions: Map<BdsDirection, BdsAction>,
+    val properties: Map<String, String>
 )
 
 data class BdsKey(

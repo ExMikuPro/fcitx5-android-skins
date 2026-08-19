@@ -43,4 +43,6 @@ interface InputBroadcastReceiver {
 
     fun onReturnKeyDrawableUpdate(@DrawableRes resourceId: Int) {}
 
+    fun onReturnKeyActionUpdate(action: ReturnKeyAction) {}
+
 }

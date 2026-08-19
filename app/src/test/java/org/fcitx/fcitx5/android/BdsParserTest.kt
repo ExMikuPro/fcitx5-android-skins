@@ -5,6 +5,7 @@
 package org.fcitx.fcitx5.android
 
 import org.fcitx.fcitx5.android.data.theme.bds.BdsArchiveReader
+import org.fcitx.fcitx5.android.data.theme.bds.BdsCandidateParser
 import org.fcitx.fcitx5.android.data.theme.bds.BdsException
 import org.fcitx.fcitx5.android.data.theme.bds.BdsParser
 import org.junit.After
@@ -49,6 +50,52 @@ class BdsParserTest {
         val root = minimalSkin("port", imageStyle = true)
         val skin = BdsParser.parse(root)
         assertTrue(skin.unsupportedProperties.any { it.contains("missing image") })
+    }
+
+    @Test
+    fun parsesCandidateSectionsWithoutDiscardingUnknownFields() {
+        val file = File(temp, "cand1.cnd").apply {
+            writeText(
+                """
+                [CAND]
+                BACK_STYLE=117
+                FORE_STYLE=160
+                CELL_STYLE=132
+                PADDING=0,0,165,1
+                FIRST_GAP=27
+                FIRST_FORE=210
+                CELL_W=66
+                FUTURE_FIELD=kept
+                [SWITCH]
+                NML_FONT_STYLE=123
+                SEL_FONT_STYLE=143
+                PADDING=0
+                [ICON4]
+                FORE_STYLE=247
+                SIZE=151,128
+                ANCHOR_TYPE=6
+                POS=-162,-54
+                KEY=F9
+                PERSIST=2
+                STAT_STYLE=S9_1
+                [TIP1]
+                FORE_STYLE=107
+                KEY=F8
+                """.trimIndent()
+            )
+        }
+        val candidate = BdsCandidateParser.parse(file)
+        assertEquals(117, candidate.backgroundStyle)
+        assertEquals(165, candidate.padding.right)
+        assertEquals(27, candidate.firstGap)
+        assertEquals(210, candidate.firstForegroundStyle)
+        assertEquals(66, candidate.cellWidth)
+        assertEquals(143, candidate.switch?.selectedFontStyle)
+        assertEquals(6, candidate.icons.single().anchorType)
+        assertEquals(-162, candidate.icons.single().position?.x)
+        assertEquals("S9_1", candidate.icons.single().stateStyle)
+        assertEquals("F8", candidate.tips.single().key)
+        assertEquals("kept", candidate.sections["CAND"]?.get("FUTURE_FIELD"))
     }
 
     @Test(expected = BdsException::class)

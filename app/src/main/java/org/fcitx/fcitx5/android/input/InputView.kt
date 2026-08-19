@@ -37,7 +37,6 @@ import org.fcitx.fcitx5.android.input.keyboard.CommonKeyActionListener
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardHeightPercentBase.DisplayMetrics
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardHeightPercentBase.RealSize
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardWindow
-import org.fcitx.fcitx5.android.input.keyboard.bds.BdsCandidateBackgroundView
 import org.fcitx.fcitx5.android.input.keyboard.bds.BdsViewportCalculator
 import org.fcitx.fcitx5.android.input.picker.emojiPicker
 import org.fcitx.fcitx5.android.input.picker.emoticonPicker
@@ -229,13 +228,10 @@ class InputView(
             val skin = bdsSkin ?: return null
             val candidate = skin.portraitCandidate ?: return null
             val width = resources.displayMetrics.widthPixels
-            val style = candidate.backgroundStyle?.let(skin.styles::get)
-            val ref = style?.normalImage
-            val tileHeight = ref?.let { imageRef ->
-                skin.image(imageRef.atlas, width)?.tiles?.get(imageRef.tile)?.source?.height
-            }
-            val designHeight = tileHeight ?: candidate.viewRect.height
-            return (designHeight * width.toFloat() / skin.portraitPinyin26.designWidth).roundToInt()
+            // The CAND.VIEW_RECT owns candidate-bar geometry. Atlas tile dimensions
+            // are source pixels and must not replace the configured destination height.
+            return (candidate.viewRect.height * width.toFloat() /
+                skin.portraitPinyin26.designWidth).roundToInt()
         }
 
     @Keep
@@ -282,12 +278,6 @@ class InputView(
                 centerVertically()
                 centerHorizontally()
             })
-            bdsSkin?.let { skin ->
-                add(BdsCandidateBackgroundView(context, skin), lParams(matchParent, bdsCandidateHeightPx ?: dp(KawaiiBarComponent.HEIGHT)) {
-                    topOfParent()
-                    centerHorizontally()
-                })
-            }
             add(kawaiiBar.view, lParams(matchParent, bdsCandidateHeightPx ?: dp(KawaiiBarComponent.HEIGHT)) {
                 topOfParent()
                 centerHorizontally()

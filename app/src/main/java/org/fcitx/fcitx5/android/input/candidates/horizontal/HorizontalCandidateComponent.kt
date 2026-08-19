@@ -18,6 +18,7 @@ import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.FcitxEvent
 import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
+import org.fcitx.fcitx5.android.data.theme.bds.BdsSkinManager
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.BooleanKey.ExpandedCandidatesEmpty
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.TransitionEvent.ExpandedCandidatesUpdated
 import org.fcitx.fcitx5.android.input.bar.KawaiiBarComponent
@@ -32,6 +33,7 @@ import org.fcitx.fcitx5.android.input.dependency.context
 import org.fcitx.fcitx5.android.input.dependency.fcitx
 import org.fcitx.fcitx5.android.input.dependency.inputView
 import org.fcitx.fcitx5.android.input.dependency.theme
+import org.fcitx.fcitx5.android.input.keyboard.bds.BdsCandidateRenderer
 import org.mechdancer.dependency.manager.must
 import splitties.dimensions.dp
 import kotlin.math.max
@@ -44,6 +46,18 @@ class HorizontalCandidateComponent :
     private val theme by manager.theme()
     private val inputView by manager.inputView()
     private val bar: KawaiiBarComponent by manager.must()
+
+    private val bdsSkin by lazy {
+        if (context.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT) {
+            BdsSkinManager.skinForTheme(theme.name)
+        } else null
+    }
+
+    val bdsRenderer: BdsCandidateRenderer? by lazy {
+        bdsSkin?.portraitCandidate?.let {
+            BdsCandidateRenderer(context, requireNotNull(bdsSkin))
+        }
+    }
 
     private val fillStyle by AppPrefs.getInstance().keyboard.horizontalCandidateStyle
     private val maxSpanCountPref by lazy {
@@ -87,6 +101,11 @@ class HorizontalCandidateComponent :
     val adapter: HorizontalCandidateViewAdapter by lazy {
         object : HorizontalCandidateViewAdapter(theme) {
             override fun onBindViewHolder(holder: CandidateViewHolder, position: Int) {
+                bdsRenderer?.configureItem(
+                    holder.ui,
+                    position,
+                    view.width.takeIf { it > 0 } ?: context.resources.displayMetrics.widthPixels
+                )
                 super.onBindViewHolder(holder, position)
                 holder.itemView.updateLayoutParams<FlexboxLayoutManager.LayoutParams> {
                     minWidth = layoutMinWidth
@@ -162,7 +181,9 @@ class HorizontalCandidateComponent :
             itemAnimator = null
             adapter = this@HorizontalCandidateComponent.adapter
             layoutManager = this@HorizontalCandidateComponent.layoutManager
-            addItemDecoration(FlexboxVerticalDecoration(dividerDrawable))
+            if (bdsRenderer == null) {
+                addItemDecoration(FlexboxVerticalDecoration(dividerDrawable))
+            }
         }
     }
 
@@ -170,7 +191,12 @@ class HorizontalCandidateComponent :
         val candidates = data.candidates
         val total = data.total
         val maxSpanCount = maxSpanCountPref.getValue()
-        when (fillStyle) {
+        if (bdsRenderer != null) {
+            // cand1.cnd owns candidate spacing and its reserved icon region.
+            layoutMinWidth = 0
+            layoutFlexGrow = 0f
+            secondLayoutPassNeeded = false
+        } else when (fillStyle) {
             NeverFillWidth -> {
                 layoutMinWidth = 0
                 layoutFlexGrow = 0f

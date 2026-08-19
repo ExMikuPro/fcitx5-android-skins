@@ -90,4 +90,8 @@ class InputBroadcaster : UniqueComponent<InputBroadcaster>(), Dependent, InputBr
         receivers.forEach { it.onReturnKeyDrawableUpdate(resourceId) }
     }
 
+    override fun onReturnKeyActionUpdate(action: ReturnKeyAction) {
+        receivers.forEach { it.onReturnKeyActionUpdate(action) }
+    }
+
 }

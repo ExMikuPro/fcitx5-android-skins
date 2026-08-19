@@ -9,6 +9,7 @@ import android.graphics.Rect
 import android.view.MotionEvent
 import androidx.annotation.CallSuper
 import androidx.annotation.DrawableRes
+import org.fcitx.fcitx5.android.input.broadcast.ReturnKeyAction
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.children
 import androidx.core.view.updateLayoutParams
@@ -487,6 +488,10 @@ abstract class BaseKeyboard(
     }
 
     open fun onReturnDrawableUpdate(@DrawableRes returnDrawable: Int) {
+        // do nothing by default
+    }
+
+    open fun onReturnActionUpdate(action: ReturnKeyAction) {
         // do nothing by default
     }
 

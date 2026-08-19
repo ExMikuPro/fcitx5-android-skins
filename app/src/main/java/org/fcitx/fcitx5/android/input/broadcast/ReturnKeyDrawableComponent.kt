@@ -14,6 +14,8 @@ import org.mechdancer.dependency.manager.managedHandler
 import org.mechdancer.dependency.manager.must
 import splitties.bitflags.hasFlag
 
+enum class ReturnKeyAction { Enter, Go, Search, Send, Next, Done, Previous }
+
 class ReturnKeyDrawableComponent :
     UniqueComponent<ReturnKeyDrawableComponent>(), Dependent, ManagedHandler by managedHandler() {
 
@@ -28,8 +30,27 @@ class ReturnKeyDrawableComponent :
     var resourceId: Int = DEFAULT_DRAWABLE
         private set
 
+    var action: ReturnKeyAction = ReturnKeyAction.Enter
+        private set
+
     @DrawableRes
     private var actionDrawable: Int = DEFAULT_DRAWABLE
+    private var editorAction: ReturnKeyAction = ReturnKeyAction.Enter
+
+    private fun actionFromEditorInfo(info: EditorInfo): ReturnKeyAction {
+        if (info.imeOptions.hasFlag(EditorInfo.IME_FLAG_NO_ENTER_ACTION)) {
+            return ReturnKeyAction.Enter
+        }
+        return when (info.imeOptions and EditorInfo.IME_MASK_ACTION) {
+            EditorInfo.IME_ACTION_GO -> ReturnKeyAction.Go
+            EditorInfo.IME_ACTION_SEARCH -> ReturnKeyAction.Search
+            EditorInfo.IME_ACTION_SEND -> ReturnKeyAction.Send
+            EditorInfo.IME_ACTION_NEXT -> ReturnKeyAction.Next
+            EditorInfo.IME_ACTION_DONE -> ReturnKeyAction.Done
+            EditorInfo.IME_ACTION_PREVIOUS -> ReturnKeyAction.Previous
+            else -> ReturnKeyAction.Enter
+        }
+    }
 
     @DrawableRes
     private fun drawableFromEditorInfo(info: EditorInfo): Int {
@@ -49,15 +70,21 @@ class ReturnKeyDrawableComponent :
 
     fun updateDrawableOnEditorInfo(info: EditorInfo) {
         actionDrawable = drawableFromEditorInfo(info)
-        if (resourceId == actionDrawable) return
-        resourceId = actionDrawable
-        broadcaster.onReturnKeyDrawableUpdate(resourceId)
+        editorAction = actionFromEditorInfo(info)
+        update(actionDrawable, editorAction)
     }
 
     fun updateDrawableOnPreedit(preeditEmpty: Boolean) {
         val newResId = if (preeditEmpty) actionDrawable else DEFAULT_DRAWABLE
-        if (resourceId == newResId) return
+        val newAction = if (preeditEmpty) editorAction else ReturnKeyAction.Enter
+        update(newResId, newAction)
+    }
+
+    private fun update(newResId: Int, newAction: ReturnKeyAction) {
+        if (resourceId == newResId && action == newAction) return
         resourceId = newResId
+        action = newAction
         broadcaster.onReturnKeyDrawableUpdate(resourceId)
+        broadcaster.onReturnKeyActionUpdate(action)
     }
 }

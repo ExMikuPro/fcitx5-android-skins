@@ -17,10 +17,10 @@ class CandidateViewHolder(val ui: CandidateItemUi) : RecyclerView.ViewHolder(ui.
 
     fun update(newIndex: Int, newCandidate: CandidateWord) {
         idx = newIndex
-        if (candidate != newCandidate) {
-            candidate = newCandidate
-            ui.updateCandidate(newCandidate)
-        }
+        candidate = newCandidate
+        // Appearance may depend on the candidate index (for example BDS FIRST_FORE),
+        // so rebinding must also refresh unchanged candidate data.
+        ui.updateCandidate(newCandidate)
     }
 
     fun clear() {
