@@ -16,12 +16,16 @@ import org.fcitx.fcitx5.android.utils.pressHighlightDrawable
 import org.fcitx.fcitx5.android.utils.rippleDrawable
 import splitties.resources.drawable
 import splitties.views.dsl.constraintlayout.after
+import splitties.views.dsl.constraintlayout.below
 import splitties.views.dsl.constraintlayout.before
 import splitties.views.dsl.constraintlayout.centerVertically
 import splitties.views.dsl.constraintlayout.constraintLayout
 import splitties.views.dsl.constraintlayout.endOfParent
+import splitties.views.dsl.constraintlayout.leftOfParent
 import splitties.views.dsl.constraintlayout.lParams
+import splitties.views.dsl.constraintlayout.rightOfParent
 import splitties.views.dsl.constraintlayout.startOfParent
+import splitties.views.dsl.constraintlayout.topOfParent
 import splitties.views.dsl.core.Ui
 import splitties.views.dsl.core.add
 import splitties.views.dsl.core.imageView
@@ -31,7 +35,11 @@ import splitties.views.dsl.core.view
 import splitties.views.gravityCenter
 import splitties.views.imageDrawable
 
-class PickerTabsUi(override val ctx: Context, val theme: Theme) : Ui {
+class PickerTabsUi(
+    override val ctx: Context,
+    val theme: Theme,
+    private val verticalVisibleCount: Int? = null
+) : Ui {
 
     companion object {
         val keyRipple by ThemeManager.prefs.keyRippleEffect
@@ -90,6 +98,7 @@ class PickerTabsUi(override val ctx: Context, val theme: Theme) : Ui {
 
     private var tabs: Array<TabUi> = arrayOf()
     private var selected = -1
+    private var firstVisible = 0
 
     private var onTabClick: (TabUi.(Int) -> Unit)? = null
 
@@ -109,9 +118,16 @@ class PickerTabsUi(override val ctx: Context, val theme: Theme) : Ui {
         }
         tabs.forEachIndexed { i, tabUi ->
             root.add(tabUi.root, root.lParams {
-                centerVertically()
-                if (i == 0) startOfParent() else after(tabs[i - 1].root)
-                if (i == tabs.size - 1) endOfParent() else before(tabs[i + 1].root)
+                if (verticalVisibleCount != null) {
+                    leftOfParent()
+                    rightOfParent()
+                    if (i == 0) topOfParent() else below(tabs[i - 1].root)
+                    matchConstraintPercentHeight = 1f / verticalVisibleCount
+                } else {
+                    centerVertically()
+                    if (i == 0) startOfParent() else after(tabs[i - 1].root)
+                    if (i == tabs.size - 1) endOfParent() else before(tabs[i + 1].root)
+                }
             })
         }
     }
@@ -123,6 +139,15 @@ class PickerTabsUi(override val ctx: Context, val theme: Theme) : Ui {
         }
         tabs[index].setActive(true)
         selected = index
+        val visibleCount = verticalVisibleCount ?: return
+        firstVisible = when {
+            index < firstVisible -> index
+            index >= firstVisible + visibleCount -> index - visibleCount + 1
+            else -> firstVisible
+        }.coerceIn(0, (tabs.size - visibleCount).coerceAtLeast(0))
+        root.post {
+            root.scrollTo(0, firstVisible * root.height / visibleCount)
+        }
     }
 
     private fun onTabClick(tabUi: TabUi) {

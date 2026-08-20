@@ -184,7 +184,8 @@ class PickerWindow(
         }
     }
 
-    override fun onCreateBarExtension() = pickerLayout.tabsUi.root
+    override fun onCreateBarExtension() =
+        pickerLayout.tabsUi.root.takeUnless { pickerLayout.embedsTabs }
 
     override fun onAttached() {
         pickerLayout.embeddedKeyboard.also {

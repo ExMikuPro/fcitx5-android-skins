@@ -21,6 +21,7 @@ import org.fcitx.fcitx5.android.core.FcitxKeyMapping
 import org.fcitx.fcitx5.android.core.KeyState
 import org.fcitx.fcitx5.android.core.KeyStates
 import org.fcitx.fcitx5.android.core.KeySym
+import org.fcitx.fcitx5.android.data.InputFeedbacks
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.bds.BdsAction
@@ -30,6 +31,7 @@ import org.fcitx.fcitx5.android.data.theme.bds.BdsImage
 import org.fcitx.fcitx5.android.data.theme.bds.BdsImageRef
 import org.fcitx.fcitx5.android.data.theme.bds.BdsKey
 import org.fcitx.fcitx5.android.data.theme.bds.BdsLayout
+import org.fcitx.fcitx5.android.data.theme.bds.BdsLayoutId
 import org.fcitx.fcitx5.android.data.theme.bds.BdsOrientation
 import org.fcitx.fcitx5.android.data.theme.bds.BdsRect
 import org.fcitx.fcitx5.android.data.theme.bds.BdsSkin
@@ -54,6 +56,13 @@ private fun MutableMap<String, Bitmap?>.cachedBitmap(path: String): Bitmap? {
     if (!containsKey(path)) this[path] = BitmapFactory.decodeFile(path)
     return this[path]
 }
+
+private class ResolvedParticleDrawable(
+    val bitmap: Bitmap,
+    val source: Rect,
+    val sourceWidth: Int,
+    val sourceHeight: Int
+)
 
 @SuppressLint("ViewConstructor")
 class BdsKeyboard(
@@ -93,8 +102,7 @@ class BdsKeyboard(
         onPopupChangeFocus = ::changePopupFocus,
         onPopupTrigger = ::triggerPopup,
         renderBackdrop = renderBackdrop,
-        animationsEnabled = layout.id.orientation == BdsOrientation.Portrait &&
-            layout.id.name == "py_26"
+        animationsEnabled = bdsAnimationsEnabled(layout.id)
     )
 
     init {
@@ -194,6 +202,14 @@ internal fun mapBdsAction(action: BdsAction): KeyAction? {
     }
 }
 
+internal fun isBdsBackspaceAction(action: BdsAction?): Boolean {
+    val mapped = action?.let(::mapBdsAction) as? KeyAction.SymAction ?: return false
+    return mapped.sym == KeySym(FcitxKeyMapping.FcitxKey_BackSpace)
+}
+
+internal fun bdsAnimationsEnabled(layoutId: BdsLayoutId): Boolean =
+    layoutId.orientation == BdsOrientation.Portrait
+
 internal fun bdsPopupPresetLabel(action: BdsAction?, caps: Boolean): String? {
     val raw = action?.raw ?: return null
     if (raw.length != 1) return null
@@ -229,7 +245,7 @@ private class BdsKeyboardSurface(
     private val renderKeys: Boolean = true,
     private val renderBackdrop: Boolean = true,
     private val animationsEnabled: Boolean = true
-) : ViewGroup(context) {
+) : ViewGroup(context), BdsParticleRenderer {
     private val bdsResources = requireNotNull(skin.resources(layout)) {
         "Missing BDS resources for ${layout.id}"
     }
@@ -240,6 +256,11 @@ private class BdsKeyboardSurface(
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private var loggedResourceBucket: Int? = null
     private var panelEmitter: BdsParticleEmitterInstance? = null
+    private var panelEmitterModel: BdsAnimation.ParticleEmitter? = null
+    private var resolvedParticleViewportWidth = -1
+    private var particleDrawables: Array<ResolvedParticleDrawable?> = emptyArray()
+    private var particleCanvas: Canvas? = null
+    private val particleDestination = RectF()
 
     var caps: Boolean = false
         set(value) {
@@ -263,14 +284,16 @@ private class BdsKeyboardSurface(
     private val decorations = if (renderBackdrop) layout.decorations.map { key ->
         BdsKeyView(
             context, key, skin, layout, bitmaps, onAction, onShowCharacterPopup,
-            onPopupChangeFocus, onPopupTrigger, animationsEnabled, isDecoration = true
+            onPopupChangeFocus, onPopupTrigger, animationsEnabled,
+            isDecoration = true
         )
     } else emptyList()
     private val childrenViews = layout.keys.map { key ->
         if (renderKeys) {
             BdsKeyView(
                 context, key, skin, layout, bitmaps, onAction, onShowCharacterPopup,
-                onPopupChangeFocus, onPopupTrigger, animationsEnabled, isDecoration = false
+                onPopupChangeFocus, onPopupTrigger, animationsEnabled,
+                isDecoration = false
             )
         } else null
     }.filterNotNull()
@@ -314,6 +337,7 @@ private class BdsKeyboardSurface(
             val rect = transformer.rect(it.layoutRect)
             it.layout(rect.left.roundToInt(), rect.top.roundToInt(), rect.right.roundToInt(), rect.bottom.roundToInt())
         }
+        panelEmitterModel?.let(::resolveParticleDrawables)
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -357,11 +381,17 @@ private class BdsKeyboardSurface(
             BdsRenderEnvironment.randomFor(animationStyle.styleId),
             System.nanoTime()
         )
+        panelEmitterModel = emitter
+        if (width > 0) resolveParticleDrawables(emitter)
         postInvalidateOnAnimation()
     }
 
     override fun onDetachedFromWindow() {
         panelEmitter = null
+        panelEmitterModel = null
+        particleDrawables = emptyArray()
+        resolvedParticleViewportWidth = -1
+        particleCanvas = null
         super.onDetachedFromWindow()
     }
 
@@ -375,34 +405,65 @@ private class BdsKeyboardSurface(
         val emitter = panelEmitter ?: return
         val frameTimeNanos = System.nanoTime()
         val oldAlpha = paint.alpha
-        val active = emitter.forEachFrame(
-            frameTimeNanos, width.toFloat(), height.toFloat()
-        ) { particle ->
-            if (particle.alpha <= 0f || particle.scale <= 0f) return@forEachFrame
-            val style = bdsResources.styles[particle.styleId] ?: return@forEachFrame
-            val ref = style.normalImage ?: style.pressedImage ?: return@forEachFrame
-            val image = skin.image(layout, ref.atlas, transformer.viewportWidth) ?: return@forEachFrame
-            val tile = image.tiles[ref.tile] ?: return@forEachFrame
-            val bitmap = bitmaps.cachedBitmap(image.pngPath) ?: return@forEachFrame
-            val particleWidth = transformer.x(tile.source.width) * particle.scale
-            val particleHeight = transformer.y(tile.source.height) * particle.scale
-            val destination = RectF(
-                particle.x - particleWidth / 2f,
-                particle.y - particleHeight / 2f,
-                particle.x + particleWidth / 2f,
-                particle.y + particleHeight / 2f
-            )
-            val save = canvas.save()
-            canvas.rotate(particle.rotation, particle.x, particle.y)
-            paint.alpha = (particle.alpha * 255f).roundToInt()
-            BdsDrawing.drawTile(
-                canvas, bitmap, tile, destination, paint, false,
-                transformer.scaleX, transformer.scaleY
-            )
-            canvas.restoreToCount(save)
-        }
+        particleCanvas = canvas
+        val active = emitter.renderFrame(
+            frameTimeNanos, width.toFloat(), height.toFloat(), this
+        )
+        particleCanvas = null
         paint.alpha = oldAlpha
         if (active) postInvalidateOnAnimation() else panelEmitter = null
+    }
+
+    override fun drawParticle(
+        styleIndex: Int,
+        x: Float,
+        y: Float,
+        scale: Float,
+        rotation: Float,
+        alpha: Float
+    ) {
+        if (alpha <= 0f || scale <= 0f || styleIndex !in particleDrawables.indices) return
+        val drawable = particleDrawables[styleIndex] ?: return
+        val canvas = particleCanvas ?: return
+        val particleWidth = transformer.x(drawable.sourceWidth) * scale
+        val particleHeight = transformer.y(drawable.sourceHeight) * scale
+        particleDestination.set(
+            x - particleWidth / 2f,
+            y - particleHeight / 2f,
+            x + particleWidth / 2f,
+            y + particleHeight / 2f
+        )
+        val save = canvas.save()
+        canvas.rotate(rotation, x, y)
+        paint.alpha = (alpha * 255f).roundToInt()
+        canvas.drawBitmap(drawable.bitmap, drawable.source, particleDestination, paint)
+        canvas.restoreToCount(save)
+    }
+
+    private fun resolveParticleDrawables(emitter: BdsAnimation.ParticleEmitter) {
+        if (resolvedParticleViewportWidth == transformer.viewportWidth &&
+            particleDrawables.size == emitter.particleStyleIds.size
+        ) return
+        particleDrawables = arrayOfNulls(emitter.particleStyleIds.size)
+        var index = 0
+        while (index < emitter.particleStyleIds.size) {
+            val style = bdsResources.styles[emitter.particleStyleIds[index]]
+            val ref = style?.normalImage ?: style?.pressedImage
+            val image = ref?.let { skin.image(layout, it.atlas, transformer.viewportWidth) }
+            val tile = ref?.let { image?.tiles?.get(it.tile) }
+            val bitmap = image?.let { bitmaps.cachedBitmap(it.pngPath) }
+            if (tile != null && bitmap != null) {
+                val source = tile.source
+                particleDrawables[index] = ResolvedParticleDrawable(
+                    bitmap,
+                    Rect(source.x, source.y, source.x + source.width, source.y + source.height),
+                    source.width,
+                    source.height
+                )
+            }
+            index++
+        }
+        resolvedParticleViewportWidth = transformer.viewportWidth
     }
 
     private fun drawStyle(canvas: Canvas, style: BdsStyle, dest: RectF, pressed: Boolean) {
@@ -451,6 +512,7 @@ private class BdsKeyView(
     private var backgroundAnimation: BdsAnimationInstance? = null
     private var foregroundAnimations: MutableList<BdsAnimationInstance?> = mutableListOf()
     private val swipeSymbolDirection by AppPrefs.getInstance().keyboard.swipeSymbolDirection
+    private val hapticOnRepeat by AppPrefs.getInstance().keyboard.hapticOnRepeat
 
     var returnAction: ReturnKeyAction = ReturnKeyAction.Enter
     var caps: Boolean = false
@@ -460,7 +522,16 @@ private class BdsKeyView(
         isClickable = !isDecoration
         if (!isDecoration) {
             id = View.generateViewId()
-            setOnClickListener { key.actions[BdsDirection.Center]?.let(onAction) }
+            val centerAction = key.actions[BdsDirection.Center]
+            setOnClickListener { centerAction?.let(onAction) }
+            if (isBdsBackspaceAction(centerAction)) {
+                soundEffect = InputFeedbacks.SoundEffect.Delete
+                repeatEnabled = true
+                onRepeatListener = { view ->
+                    centerAction?.let(onAction)
+                    if (hapticOnRepeat) InputFeedbacks.hapticFeedback(view)
+                }
+            }
             val holdAction = key.actions[BdsDirection.Hold]
             val hasPopupPreset = bdsPopupPresetLabel(
                 key.actions[BdsDirection.Center], false
@@ -561,7 +632,12 @@ private class BdsKeyView(
         val backgroundStyle = variant?.backgroundStyle ?: key.backgroundStyle
         val foregroundStyles = variant?.foregroundStyles ?: key.foregroundStyles
         val positionTypes = variant?.positionTypes ?: key.positionTypes
-        val frameTimeNanos = System.nanoTime()
+        val hasAnimation = wholeAnimation != null || backgroundAnimation != null ||
+            foregroundAnimations.any { it != null }
+        // A child view may redraw from its own display list without executing the
+        // parent surface's dispatchDraw(). Sample monotonic time locally while this
+        // key is animated so a completed panel emitter cannot freeze key animations.
+        val frameTimeNanos = if (hasAnimation) System.nanoTime() else 0L
         var needsNextFrame = false
         fun frame(instance: BdsAnimationInstance?): BdsAnimationFrame? = instance?.frameAt(frameTimeNanos)
             ?.also { needsNextFrame = needsNextFrame || it.active }
@@ -596,7 +672,13 @@ private class BdsKeyView(
             canvas.restoreToCount(save)
         }
         canvas.restoreToCount(wholeSave)
-        if (needsNextFrame) postInvalidateOnAnimation()
+        if (needsNextFrame) {
+            postInvalidateOnAnimation()
+        } else if (hasAnimation) {
+            wholeAnimation = null
+            backgroundAnimation = null
+            foregroundAnimations.clear()
+        }
     }
 
     private fun triggerPressAnimations() {

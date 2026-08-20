@@ -5,7 +5,10 @@
 package org.fcitx.fcitx5.android.input.keyboard.bds
 
 import org.fcitx.fcitx5.android.data.theme.bds.BdsAction
+import org.fcitx.fcitx5.android.data.theme.bds.BdsLayoutId
+import org.fcitx.fcitx5.android.data.theme.bds.BdsOrientation
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -22,6 +25,19 @@ class BdsActionMappingTest {
     @Test
     fun uppercaseFNumberIsAFunctionAction() {
         assertTrue(mapBdsAction(BdsAction("F36")) is KeyAction.SymAction)
+    }
+
+    @Test
+    fun backspaceRepeatIsSelectedByActionSemantics() {
+        assertTrue(isBdsBackspaceAction(BdsAction("F36")))
+        assertFalse(isBdsBackspaceAction(BdsAction("F39")))
+        assertFalse(isBdsBackspaceAction(BdsAction("x")))
+    }
+
+    @Test
+    fun portraitEnglishLayoutKeepsBdsAnimationsEnabled() {
+        assertTrue(bdsAnimationsEnabled(BdsLayoutId(BdsOrientation.Portrait, "en_26")))
+        assertFalse(bdsAnimationsEnabled(BdsLayoutId(BdsOrientation.Landscape, "en_26")))
     }
 
     @Test

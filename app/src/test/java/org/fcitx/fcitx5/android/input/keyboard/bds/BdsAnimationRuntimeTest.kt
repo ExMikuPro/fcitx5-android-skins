@@ -8,6 +8,7 @@ import org.fcitx.fcitx5.android.data.theme.bds.BdsAnimatedNumber
 import org.fcitx.fcitx5.android.data.theme.bds.BdsAnimatedVector
 import org.fcitx.fcitx5.android.data.theme.bds.BdsAnimation
 import org.fcitx.fcitx5.android.data.theme.bds.BdsCompositeMethod
+import org.fcitx.fcitx5.android.data.theme.bds.BdsNumberRange
 import org.fcitx.fcitx5.android.data.theme.bds.BdsPrimitiveKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -163,6 +164,154 @@ class BdsAnimationRuntimeTest {
         assertFalse(completed.active)
         assertEquals(BdsTransform(), completed.transform)
     }
+
+    @Test
+    fun particleActiveWindowAddsBirthsAndRemovesExpiredParticles() {
+        val instance = BdsParticleEmitterInstance(
+            particleEmitter(total = 3, birthRate = 2f, lifeMillis = 1_000),
+            Random(1),
+            0
+        )
+        val renderer = RecordingParticleRenderer()
+
+        assertTrue(instance.renderFrame(0, 100f, 100f, renderer))
+        assertEquals(3, instance.capacity)
+        assertEquals(1, instance.activeCount)
+        assertEquals(0, instance.firstActiveIndex)
+        assertEquals(1, instance.nextBirthIndex)
+
+        renderer.clear()
+        instance.renderFrame(500_000_000, 100f, 100f, renderer)
+        assertEquals(2, instance.activeCount)
+        assertEquals(2, renderer.frames.size)
+
+        renderer.clear()
+        instance.renderFrame(1_001_000_000, 100f, 100f, renderer)
+        assertEquals(2, instance.activeCount)
+        assertEquals(1, instance.firstActiveIndex)
+        assertEquals(3, instance.nextBirthIndex)
+
+        renderer.clear()
+        assertFalse(instance.renderFrame(2_001_000_000, 100f, 100f, renderer))
+        assertEquals(0, instance.activeCount)
+        assertTrue(renderer.frames.isEmpty())
+    }
+
+    @Test
+    fun particleStorageNeverExceedsDeclaredTotalNumber() {
+        val instance = BdsParticleEmitterInstance(
+            particleEmitter(total = 4, birthRate = 10_000f, lifeMillis = 10_000),
+            Random(1),
+            0
+        )
+        val renderer = RecordingParticleRenderer()
+
+        instance.renderFrame(10_000_000, 100f, 100f, renderer)
+
+        assertEquals(4, instance.capacity)
+        assertEquals(4, instance.activeCount)
+        assertEquals(4, renderer.frames.size)
+    }
+
+    @Test
+    fun particleSamplingMatchesBdsKinematics() {
+        val emitter = particleEmitter(total = 1, birthRate = 1f, lifeMillis = 1_000).copy(
+            emitRegion = listOf(0.5f, 0.5f, 0.5f, 0.5f),
+            velocity = BdsNumberRange(10f, 10f),
+            velocityDirection = BdsNumberRange(0f, 0f),
+            acceleration = BdsNumberRange(2f, 2f),
+            accelerationDirection = BdsNumberRange(0f, 0f),
+            initialScale = BdsNumberRange(1f, 1f),
+            scaleSpeed = BdsNumberRange(0.5f, 0.5f),
+            initialRotation = BdsNumberRange(10f, 10f),
+            rotationSpeed = BdsNumberRange(20f, 20f),
+            initialAlpha = BdsNumberRange(255f, 255f),
+            alphaSpeed = BdsNumberRange(-10f, -10f)
+        )
+        val renderer = RecordingParticleRenderer()
+        val instance = BdsParticleEmitterInstance(emitter, Random(1), 0)
+
+        instance.renderFrame(500_000_000, 200f, 100f, renderer)
+
+        val frame = renderer.frames.single()
+        assertEquals(105.25f, frame.x, 0.0001f)
+        assertEquals(50f, frame.y, 0.0001f)
+        assertEquals(1.25f, frame.scale, 0.0001f)
+        assertEquals(20f, frame.rotation, 0.0001f)
+        assertEquals(250f / 255f, frame.alpha, 0.0001f)
+    }
+
+    @Test
+    fun particleRandomSamplingIsReproducibleAndDoesNotMutateModel() {
+        val emitter = particleEmitter(total = 8, birthRate = 8f, lifeMillis = 2_000).copy(
+            emitRegion = listOf(0f, 0f, 1f, 1f),
+            velocity = BdsNumberRange(30f, 60f),
+            velocityDirection = BdsNumberRange(45f, 135f),
+            initialScale = BdsNumberRange(0.6f, 0.8f),
+            initialRotation = BdsNumberRange(0f, 360f)
+        )
+        val original = emitter.copy()
+        val first = BdsParticleEmitterInstance(emitter, Random(3029), 0)
+        val second = BdsParticleEmitterInstance(emitter, Random(3029), 0)
+        val firstFrames = RecordingParticleRenderer()
+        val secondFrames = RecordingParticleRenderer()
+
+        first.renderFrame(900_000_000, 1080f, 688f, firstFrames)
+        second.renderFrame(900_000_000, 1080f, 688f, secondFrames)
+
+        assertEquals(firstFrames.frames, secondFrames.frames)
+        assertEquals(original, emitter)
+    }
+
+    private data class RecordedParticle(
+        val styleIndex: Int,
+        val x: Float,
+        val y: Float,
+        val scale: Float,
+        val rotation: Float,
+        val alpha: Float
+    )
+
+    private class RecordingParticleRenderer : BdsParticleRenderer {
+        val frames = mutableListOf<RecordedParticle>()
+
+        override fun drawParticle(
+            styleIndex: Int,
+            x: Float,
+            y: Float,
+            scale: Float,
+            rotation: Float,
+            alpha: Float
+        ) {
+            frames += RecordedParticle(styleIndex, x, y, scale, rotation, alpha)
+        }
+
+        fun clear() = frames.clear()
+    }
+
+    private fun particleEmitter(total: Int, birthRate: Float, lifeMillis: Long) =
+        BdsAnimation.ParticleEmitter(
+            id = 23,
+            category = 3,
+            location = 1,
+            lifeMillis = lifeMillis,
+            emitRegion = listOf(0f, 0f, 0f, 0f),
+            totalNumber = total,
+            birthRate = birthRate,
+            emitType = 0,
+            particleStyleIds = listOf(317, 318, 319),
+            velocity = null,
+            velocityDirection = null,
+            acceleration = null,
+            accelerationDirection = null,
+            initialScale = null,
+            scaleSpeed = null,
+            initialRotation = null,
+            rotationSpeed = null,
+            initialAlpha = null,
+            alphaSpeed = null,
+            properties = emptyMap()
+        )
 
     private fun primitive(
         id: Int,

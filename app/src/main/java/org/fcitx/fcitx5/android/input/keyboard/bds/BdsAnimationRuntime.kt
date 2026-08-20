@@ -40,96 +40,129 @@ internal data class BdsAnimationFrame(
     val active: Boolean
 )
 
-internal data class BdsParticleFrame(
-    val styleId: Int,
-    val x: Float,
-    val y: Float,
-    val scale: Float,
-    val rotation: Float,
-    val alpha: Float
-)
+internal fun interface BdsParticleRenderer {
+    fun drawParticle(
+        styleIndex: Int,
+        x: Float,
+        y: Float,
+        scale: Float,
+        rotation: Float,
+        alpha: Float
+    )
+}
 
 internal class BdsParticleEmitterInstance(
     private val emitter: BdsAnimation.ParticleEmitter,
     random: Random,
     private val startNanos: Long
 ) {
-    private data class Particle(
-        val birthMillis: Float,
-        val styleId: Int,
-        val normalizedX: Float,
-        val normalizedY: Float,
-        val velocity: Float,
-        val velocityDirectionRadians: Float,
-        val acceleration: Float,
-        val accelerationDirectionRadians: Float,
-        val initialScale: Float,
-        val scaleSpeed: Float,
-        val initialRotation: Float,
-        val rotationSpeed: Float,
-        val initialAlpha: Float,
-        val alphaSpeed: Float
-    )
+    /** Fixed-capacity primitive storage; no particle objects are created while rendering. */
+    internal val capacity = emitter.totalNumber.coerceAtLeast(0)
+    private val birthMillis = FloatArray(capacity)
+    private val styleIndices = IntArray(capacity)
+    private val normalizedX = FloatArray(capacity)
+    private val normalizedY = FloatArray(capacity)
+    private val velocity = FloatArray(capacity)
+    private val velocityCos = FloatArray(capacity)
+    private val velocitySin = FloatArray(capacity)
+    private val acceleration = FloatArray(capacity)
+    private val accelerationCos = FloatArray(capacity)
+    private val accelerationSin = FloatArray(capacity)
+    private val initialScale = FloatArray(capacity)
+    private val scaleSpeed = FloatArray(capacity)
+    private val initialRotation = FloatArray(capacity)
+    private val rotationSpeed = FloatArray(capacity)
+    private val initialAlpha = FloatArray(capacity)
+    private val alphaSpeed = FloatArray(capacity)
 
-    private val particles = List(emitter.totalNumber.coerceAtLeast(0)) { index ->
+    /** Active particles are always one contiguous birth-ordered window. */
+    internal var firstActiveIndex = 0
+        private set
+    internal var nextBirthIndex = 0
+        private set
+    internal val activeCount: Int
+        get() = nextBirthIndex - firstActiveIndex
+
+    init {
         val region = emitter.emitRegion
         val left = region.getOrElse(0) { 0f }
         val top = region.getOrElse(1) { 0f }
         val right = region.getOrElse(2) { 1f }
         val bottom = region.getOrElse(3) { 1f }
         val birthsPerSecond = emitter.birthRate.coerceAtLeast(0.001f)
-        Particle(
-            birthMillis = index * 1000f / birthsPerSecond,
-            styleId = emitter.particleStyleIds.randomOrNull(random) ?: -1,
-            normalizedX = randomBetween(random, left, right),
-            normalizedY = randomBetween(random, top, bottom),
-            velocity = emitter.velocity?.sample(random) ?: 0f,
-            velocityDirectionRadians = (emitter.velocityDirection?.sample(random) ?: 0f) *
-                PI.toFloat() / 180f,
-            acceleration = emitter.acceleration?.sample(random) ?: 0f,
-            accelerationDirectionRadians =
-                (emitter.accelerationDirection?.sample(random) ?: 0f) * PI.toFloat() / 180f,
-            initialScale = emitter.initialScale?.sample(random) ?: 1f,
-            scaleSpeed = emitter.scaleSpeed?.sample(random) ?: 0f,
-            initialRotation = emitter.initialRotation?.sample(random) ?: 0f,
-            rotationSpeed = emitter.rotationSpeed?.sample(random) ?: 0f,
-            initialAlpha = emitter.initialAlpha?.sample(random) ?: 255f,
-            alphaSpeed = emitter.alphaSpeed?.sample(random) ?: 0f
-        )
+        var index = 0
+        while (index < capacity) {
+            birthMillis[index] = index * 1000f / birthsPerSecond
+            styleIndices[index] = if (emitter.particleStyleIds.isEmpty()) {
+                -1
+            } else {
+                random.nextInt(emitter.particleStyleIds.size)
+            }
+            normalizedX[index] = randomBetween(random, left, right)
+            normalizedY[index] = randomBetween(random, top, bottom)
+            velocity[index] = emitter.velocity?.sample(random) ?: 0f
+            val velocityRadians = (emitter.velocityDirection?.sample(random) ?: 0f) *
+                PI.toFloat() / 180f
+            velocityCos[index] = cos(velocityRadians)
+            velocitySin[index] = sin(velocityRadians)
+            acceleration[index] = emitter.acceleration?.sample(random) ?: 0f
+            val accelerationRadians =
+                (emitter.accelerationDirection?.sample(random) ?: 0f) * PI.toFloat() / 180f
+            accelerationCos[index] = cos(accelerationRadians)
+            accelerationSin[index] = sin(accelerationRadians)
+            initialScale[index] = emitter.initialScale?.sample(random) ?: 1f
+            scaleSpeed[index] = emitter.scaleSpeed?.sample(random) ?: 0f
+            initialRotation[index] = emitter.initialRotation?.sample(random) ?: 0f
+            rotationSpeed[index] = emitter.rotationSpeed?.sample(random) ?: 0f
+            initialAlpha[index] = emitter.initialAlpha?.sample(random) ?: 255f
+            alphaSpeed[index] = emitter.alphaSpeed?.sample(random) ?: 0f
+            index++
+        }
     }
 
-    private val finalBirthMillis = particles.lastOrNull()?.birthMillis ?: 0f
+    private val finalBirthMillis = if (capacity == 0) 0f else birthMillis[capacity - 1]
     val durationMillis = finalBirthMillis + emitter.lifeMillis
 
-    fun forEachFrame(
+    /**
+     * Samples only the active birth-ordered window and writes primitives directly
+     * to [renderer]. With a reused renderer this method allocates nothing per frame.
+     */
+    fun renderFrame(
         frameTimeNanos: Long,
         width: Float,
         height: Float,
-        draw: (BdsParticleFrame) -> Unit
+        renderer: BdsParticleRenderer
     ): Boolean {
         val elapsedMillis = (frameTimeNanos - startNanos).coerceAtLeast(0L) / 1_000_000f
-        particles.forEach { particle ->
-            val ageMillis = elapsedMillis - particle.birthMillis
-            if (ageMillis < 0f || ageMillis > emitter.lifeMillis) return@forEach
+
+        while (nextBirthIndex < capacity && birthMillis[nextBirthIndex] <= elapsedMillis) {
+            nextBirthIndex++
+        }
+        while (firstActiveIndex < nextBirthIndex &&
+            elapsedMillis - birthMillis[firstActiveIndex] > emitter.lifeMillis
+        ) {
+            firstActiveIndex++
+        }
+
+        var index = firstActiveIndex
+        while (index < nextBirthIndex) {
+            val ageMillis = elapsedMillis - birthMillis[index]
             val ageSeconds = ageMillis / 1000f
-            val velocityDistance = particle.velocity * ageSeconds
-            val accelerationDistance = 0.5f * particle.acceleration * ageSeconds * ageSeconds
-            draw(
-                BdsParticleFrame(
-                    styleId = particle.styleId,
-                    x = particle.normalizedX * width +
-                        cos(particle.velocityDirectionRadians) * velocityDistance +
-                        cos(particle.accelerationDirectionRadians) * accelerationDistance,
-                    y = particle.normalizedY * height +
-                        sin(particle.velocityDirectionRadians) * velocityDistance +
-                        sin(particle.accelerationDirectionRadians) * accelerationDistance,
-                    scale = (particle.initialScale + particle.scaleSpeed * ageSeconds)
-                        .coerceAtLeast(0f),
-                    rotation = particle.initialRotation + particle.rotationSpeed * ageSeconds,
-                    alpha = ((particle.initialAlpha + particle.alphaSpeed * ageSeconds) / 255f)
-                        .coerceIn(0f, 1f)
-                )
+            val velocityDistance = velocity[index] * ageSeconds
+            val accelerationDistance =
+                0.5f * acceleration[index] * ageSeconds * ageSeconds
+            renderer.drawParticle(
+                styleIndices[index],
+                normalizedX[index] * width + velocityCos[index] * velocityDistance +
+                    accelerationCos[index] * accelerationDistance,
+                normalizedY[index] * height + velocitySin[index] * velocityDistance +
+                    accelerationSin[index] * accelerationDistance,
+                (initialScale[index] + scaleSpeed[index] * ageSeconds).coerceAtLeast(0f),
+                initialRotation[index] + rotationSpeed[index] * ageSeconds,
+                ((initialAlpha[index] + alphaSpeed[index] * ageSeconds) / 255f)
+                    .coerceIn(0f, 1f)
             )
+            index++
         }
         return elapsedMillis <= durationMillis
     }

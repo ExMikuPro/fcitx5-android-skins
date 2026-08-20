@@ -13,6 +13,7 @@ import androidx.core.view.WindowCompat
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.data.theme.ThemePrefs.NavbarBackground
+import org.fcitx.fcitx5.android.data.theme.bds.BdsSkinManager
 import org.fcitx.fcitx5.android.utils.DeviceUtil
 
 class NavigationBarManager {
@@ -95,9 +96,15 @@ class NavigationBarManager {
                 .isAppearanceLightNavigationBars = !theme.isDark
         }
         if (shouldUpdateNavbarBackground) {
-            window.setNavbarBackgroundColor(
-                if (!keyBorder && theme is Theme.Builtin) theme.keyboardColor else theme.backgroundColor
-            )
+            val isBds = BdsSkinManager.skinForTheme(theme.name) != null
+            val color = when {
+                isBds -> theme.keyboardColor
+                !keyBorder && theme is Theme.Builtin -> theme.keyboardColor
+                else -> theme.backgroundColor
+            }
+            // The system navigation surface must be opaque. BDS colors may carry
+            // alpha because the original renderer composites them over its surface.
+            window.setNavbarBackgroundColor(if (isBds) color or Color.BLACK else color)
         }
     }
 }
