@@ -1,2 +1,3 @@
 # Local proprietary golden samples must never be committed.
 *.bds
+golden-sample/

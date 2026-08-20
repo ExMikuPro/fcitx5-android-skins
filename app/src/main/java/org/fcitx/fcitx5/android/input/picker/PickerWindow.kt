@@ -8,6 +8,7 @@ import androidx.core.content.ContextCompat
 import androidx.transition.Transition
 import androidx.viewpager2.widget.ViewPager2
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
+import org.fcitx.fcitx5.android.data.theme.bds.BdsSkinManager
 import org.fcitx.fcitx5.android.input.broadcast.ReturnKeyDrawableComponent
 import org.fcitx.fcitx5.android.input.dependency.theme
 import org.fcitx.fcitx5.android.input.keyboard.CommonKeyActionListener
@@ -15,6 +16,7 @@ import org.fcitx.fcitx5.android.input.keyboard.KeyAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyActionListener
 import org.fcitx.fcitx5.android.input.keyboard.KeyDef
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardWindow
+import org.fcitx.fcitx5.android.input.keyboard.bds.BdsLayoutResolver
 import org.fcitx.fcitx5.android.input.popup.PopupAction
 import org.fcitx.fcitx5.android.input.popup.PopupActionListener
 import org.fcitx.fcitx5.android.input.popup.PopupComponent
@@ -102,7 +104,15 @@ class PickerWindow(
         }
     }
 
-    override fun onCreateView() = PickerLayout(context, theme, switchKey).apply {
+    override fun onCreateView(): PickerLayout {
+        val bdsSkin = BdsSkinManager.skinForTheme(theme.name)
+        val orientation = BdsLayoutResolver.orientation(context.resources.configuration)
+        val bdsLayout = if (key == Key.Symbol && bdsSkin != null) {
+            BdsLayoutResolver.resolve(
+                bdsSkin, orientation, BdsLayoutResolver.Purpose.Symbol
+            )
+        } else null
+        return PickerLayout(context, theme, switchKey, bdsSkin, bdsLayout).apply {
         pickerLayout = this
         val bordered = followKeyBorder && keyBorder
         pickerPagesAdapter = PickerPagesAdapter(
@@ -113,6 +123,36 @@ class PickerWindow(
             setTabs(pickerPagesAdapter.getCategoryList())
             setOnTabClickListener { i ->
                 pager.setCurrentItem(pickerPagesAdapter.getRangeOfCategoryIndex(i).first, false)
+            }
+        }
+        bdsFunctionActionListener = action@{ raw ->
+            when (raw.uppercase()) {
+                "F22" -> {
+                    pager.setCurrentItem((pager.currentItem - 1).coerceAtLeast(0), false)
+                    true
+                }
+                "F23" -> {
+                    pager.setCurrentItem(
+                        (pager.currentItem + 1).coerceAtMost(pickerPagesAdapter.itemCount - 1),
+                        false
+                    )
+                    true
+                }
+                "F27" -> {
+                    val categories = pickerPagesAdapter.getCategoryList()
+                    if (categories.size > 1) {
+                        val current = pickerPagesAdapter.getCategoryIndexOfPage(pager.currentItem)
+                        val next = if (current < 1 || current >= categories.lastIndex) 1 else current + 1
+                        pager.setCurrentItem(
+                            pickerPagesAdapter.getRangeOfCategoryIndex(next).first,
+                            false
+                        )
+                    }
+                    true
+                }
+                // F55 marks the dynamic list host; the ViewPager above it owns input.
+                "F55" -> true
+                else -> false
             }
         }
         pager.apply {
@@ -140,6 +180,7 @@ class PickerWindow(
                     popup.dismissAll()
                 }
             })
+        }
         }
     }
 

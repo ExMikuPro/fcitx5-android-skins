@@ -25,6 +25,8 @@ class BdsCoordinateTransformer(
     )
 
     fun x(value: Int) = value * scaleX
+    fun x(value: Float) = value * scaleX
     fun y(value: Int) = value * scaleY
+    fun y(value: Float) = value * scaleY
     fun point(point: BdsPoint?) = (point?.x ?: 0) * scaleX to (point?.y ?: 0) * scaleY
 }

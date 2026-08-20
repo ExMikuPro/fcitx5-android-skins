@@ -5,6 +5,7 @@
 package org.fcitx.fcitx5.android.input.bar
 
 import android.graphics.Color
+import android.graphics.drawable.Drawable
 import android.os.Build
 import android.util.Size
 import android.view.KeyEvent
@@ -423,10 +424,8 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         }
     }
 
-    fun useBdsChrome() {
-        view.setBackgroundColor(Color.TRANSPARENT)
-        idleUi.menuButton.visibility = View.INVISIBLE
-        idleUi.hideKeyboardButton.visibility = View.INVISIBLE
+    fun useBdsChrome(background: Drawable?) {
+        view.background = background
     }
 
     override fun onScopeSetupFinished(scope: DynamicScope) {

@@ -131,8 +131,23 @@ class PopupComponent :
                 labels = keyboard.items
             }
         }
-        // clear popup preview text         OR create empty popup preview
-        showingEntryUi[viewId]?.setText("") ?: showPopup(viewId, "", bounds)
+        // The classic Fcitx popup uses an empty preview stem over the trigger key.
+        // Renderers that already draw their own pressed state can request a detached
+        // keyboard so the trigger remains visible throughout the long press.
+        if (keyboard.avoidTriggerOverlap) {
+            showingEntryUi.remove(viewId)?.let {
+                dismissJobs.remove(viewId)?.cancel()
+                root.removeView(it.root)
+                freeEntryUi.offer(it)
+            }
+        } else {
+            showingEntryUi[viewId]?.setText("") ?: showPopup(viewId, "", bounds)
+        }
+        val gesturePopupHeight = if (keyboard.avoidTriggerOverlap) {
+            bounds.height() + popupKeyHeight
+        } else {
+            popupHeight + keyBottomMargin
+        }
         val keyboardUi = PopupKeyboardUi(
             context,
             theme,
@@ -143,7 +158,7 @@ class PopupComponent :
             popupWidth,
             popupKeyHeight,
             // position popup keyboard higher, because of [^1]
-            popupHeight + keyBottomMargin,
+            gesturePopupHeight,
             keys,
             labels
         )

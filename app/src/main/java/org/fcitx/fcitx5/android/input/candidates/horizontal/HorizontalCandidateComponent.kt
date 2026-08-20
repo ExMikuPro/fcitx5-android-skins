@@ -34,6 +34,7 @@ import org.fcitx.fcitx5.android.input.dependency.fcitx
 import org.fcitx.fcitx5.android.input.dependency.inputView
 import org.fcitx.fcitx5.android.input.dependency.theme
 import org.fcitx.fcitx5.android.input.keyboard.bds.BdsCandidateRenderer
+import org.fcitx.fcitx5.android.input.keyboard.bds.BdsLayoutResolver
 import org.mechdancer.dependency.manager.must
 import splitties.dimensions.dp
 import kotlin.math.max
@@ -48,14 +49,13 @@ class HorizontalCandidateComponent :
     private val bar: KawaiiBarComponent by manager.must()
 
     private val bdsSkin by lazy {
-        if (context.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT) {
-            BdsSkinManager.skinForTheme(theme.name)
-        } else null
+        BdsSkinManager.skinForTheme(theme.name)
     }
 
     val bdsRenderer: BdsCandidateRenderer? by lazy {
-        bdsSkin?.portraitCandidate?.let {
-            BdsCandidateRenderer(context, requireNotNull(bdsSkin))
+        val orientation = BdsLayoutResolver.orientation(context.resources.configuration)
+        bdsSkin?.candidates?.get(orientation)?.let {
+            BdsCandidateRenderer(context, requireNotNull(bdsSkin), orientation)
         }
     }
 

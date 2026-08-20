@@ -8,7 +8,7 @@ import org.fcitx.fcitx5.android.data.theme.bds.BdsKey
 import org.fcitx.fcitx5.android.data.theme.bds.BdsKeyVariant
 import org.fcitx.fcitx5.android.input.broadcast.ReturnKeyAction
 
-/** Maps Android editor actions to the legacy Baidu STAT_STYLE state contract. */
+/** Maps runtime keyboard state to the legacy Baidu STAT_STYLE state contract. */
 object BdsKeyStateResolver {
     // Confirmed by the Golden Sample's STAT_STYLE-to-TIP chain and the final
     // enter.png labels: 下一项, 前往, 发送, 确认, 搜索.
@@ -24,9 +24,15 @@ object BdsKeyStateResolver {
     fun resolve(
         key: BdsKey,
         action: ReturnKeyAction,
-        variants: List<BdsKeyVariant>
+        variants: List<BdsKeyVariant>,
+        caps: Boolean = false
     ): BdsKeyVariant? {
-        val targetState = editorState[action] ?: return null
+        val targetStates = buildSet {
+            editorState[action]?.let(::add)
+            // Golden Sample: KEY32 STAT_STYLE=S14_7 selects the active scallion.
+            if (caps) add(14)
+        }
+        if (targetStates.isEmpty()) return null
         val raw = key.properties.entries
             .firstOrNull { it.key.equals("STAT_STYLE", ignoreCase = true) }
             ?.value ?: return null
@@ -34,7 +40,7 @@ object BdsKeyStateResolver {
             val match = stateEntry.matchEntire(entry.trim()) ?: return@firstNotNullOfOrNull null
             val state = match.groupValues[1].toIntOrNull()
             val index = match.groupValues[2].toIntOrNull()
-            index.takeIf { state == targetState }
+            index.takeIf { state in targetStates }
         } ?: return null
         return variants.firstOrNull {
             it.section.equals("TIP$variantIndex", ignoreCase = true)

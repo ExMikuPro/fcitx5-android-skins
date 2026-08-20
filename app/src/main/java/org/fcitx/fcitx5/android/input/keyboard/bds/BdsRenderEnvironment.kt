@@ -21,7 +21,7 @@ object BdsRenderEnvironment {
 
     @Volatile
     var configuration: Configuration = if (BuildConfig.DEBUG) {
-        Configuration(Mode.Static, timestampMillis = 0L, randomSeed = GOLDEN_RANDOM_SEED)
+        Configuration(Mode.Animation, timestampMillis = 0L, randomSeed = GOLDEN_RANDOM_SEED)
     } else {
         Configuration(
             Mode.Animation,

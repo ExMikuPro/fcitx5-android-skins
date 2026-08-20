@@ -117,11 +117,18 @@ open class KeyDef(
 
         class AltPreview(content: String, val alternative: String) : Preview(content)
 
-        sealed class Keyboard : Popup() {
-            data class Preset(val label: String, val transformPunctuation: Boolean = true) :
+        sealed class Keyboard(open val avoidTriggerOverlap: Boolean = false) : Popup() {
+            data class Preset(
+                val label: String,
+                val transformPunctuation: Boolean = true,
+                override val avoidTriggerOverlap: Boolean = false
+            ) :
                 Keyboard()
 
-            class Explicit(val items: Array<String>) : Keyboard()
+            class Explicit(
+                val items: Array<String>,
+                override val avoidTriggerOverlap: Boolean = false
+            ) : Keyboard()
         }
 
         class Menu(val items: Array<Item>) : Popup() {

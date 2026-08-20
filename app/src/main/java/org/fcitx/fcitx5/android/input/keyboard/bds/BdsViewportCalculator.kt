@@ -4,6 +4,7 @@
  */
 package org.fcitx.fcitx5.android.input.keyboard.bds
 
+import org.fcitx.fcitx5.android.data.theme.bds.BdsOrientation
 import kotlin.math.roundToInt
 
 /**
@@ -25,5 +26,18 @@ object BdsViewportCalculator {
         if (designWidth <= 0 || designHeight <= 0 || viewportWidth <= 0) return 0
         return (designHeight.toDouble() * viewportWidth * PORTRAIT_PANEL_HEIGHT_NUMERATOR /
             designWidth / PORTRAIT_PANEL_HEIGHT_DENOMINATOR).roundToInt()
+    }
+
+    fun panelHeight(
+        designWidth: Int,
+        designHeight: Int,
+        viewportWidth: Int,
+        orientation: BdsOrientation
+    ): Int {
+        if (orientation == BdsOrientation.Portrait) {
+            return portraitPanelHeight(designWidth, designHeight, viewportWidth)
+        }
+        if (designWidth <= 0 || designHeight <= 0 || viewportWidth <= 0) return 0
+        return (designHeight.toDouble() * viewportWidth / designWidth).roundToInt()
     }
 }

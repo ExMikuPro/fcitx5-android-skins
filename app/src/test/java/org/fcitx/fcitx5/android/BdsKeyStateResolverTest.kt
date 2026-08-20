@@ -48,4 +48,32 @@ class BdsKeyStateResolverTest {
         assertEquals("TIP1", BdsKeyStateResolver.resolve(returnKey, ReturnKeyAction.Next, variants)?.section)
         assertNull(BdsKeyStateResolver.resolve(returnKey, ReturnKeyAction.Enter, variants))
     }
+
+    @Test
+    fun resolvesCapsStateThroughStatStyle() {
+        val shiftKey = returnKey.copy(
+            section = "KEY32",
+            properties = mapOf("STAT_STYLE" to "S14_7")
+        )
+        val capsVariant = BdsKeyVariant(
+            section = "TIP7",
+            backgroundStyle = 119,
+            foregroundStyles = listOf(131),
+            positionTypes = listOf(52),
+            actions = mapOf(BdsDirection.Center to BdsAction("F11")),
+            properties = emptyMap()
+        )
+
+        assertEquals(
+            "TIP7",
+            BdsKeyStateResolver.resolve(
+                shiftKey, ReturnKeyAction.Enter, listOf(capsVariant), caps = true
+            )?.section
+        )
+        assertNull(
+            BdsKeyStateResolver.resolve(
+                shiftKey, ReturnKeyAction.Enter, listOf(capsVariant), caps = false
+            )
+        )
+    }
 }

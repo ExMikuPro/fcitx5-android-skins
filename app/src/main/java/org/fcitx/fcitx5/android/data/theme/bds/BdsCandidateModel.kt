@@ -50,12 +50,6 @@ data class BdsCandidateTip(
     val properties: Map<String, String>
 )
 
-data class BdsAnimation(
-    val id: Int,
-    val path: String?,
-    val properties: Map<String, String>
-)
-
 data class BdsInsets(val left: Int, val top: Int, val right: Int, val bottom: Int) {
     companion object {
         val Zero = BdsInsets(0, 0, 0, 0)

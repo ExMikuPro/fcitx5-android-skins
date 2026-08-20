@@ -38,6 +38,8 @@ import org.fcitx.fcitx5.android.input.keyboard.KeyboardHeightPercentBase.Display
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardHeightPercentBase.RealSize
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardWindow
 import org.fcitx.fcitx5.android.input.keyboard.bds.BdsViewportCalculator
+import org.fcitx.fcitx5.android.input.keyboard.bds.BdsLayoutResolver
+import org.fcitx.fcitx5.android.input.keyboard.bds.createBdsPanelBackdrop
 import org.fcitx.fcitx5.android.input.picker.emojiPicker
 import org.fcitx.fcitx5.android.input.picker.emoticonPicker
 import org.fcitx.fcitx5.android.input.picker.symbolPicker
@@ -69,7 +71,6 @@ import splitties.views.dsl.core.view
 import splitties.views.dsl.core.wrapContent
 import splitties.views.imageDrawable
 import timber.log.Timber
-import kotlin.math.roundToInt
 
 @SuppressLint("ViewConstructor")
 class InputView(
@@ -160,17 +161,18 @@ class InputView(
 
     private val keyboardHeightPx: Int
         get() {
-            if (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT) {
-                BdsSkinManager.skinForTheme(theme.name)?.portraitPinyin26?.let { layout ->
+            bdsSkin?.let { skin ->
+                val orientation = BdsLayoutResolver.orientation(resources.configuration)
+                BdsLayoutResolver.resolve(
+                    skin, orientation, BdsLayoutResolver.Purpose.Text26
+                )?.let { layout ->
                     val viewportWidth = resources.displayMetrics.widthPixels
-                    val height = BdsViewportCalculator.portraitPanelHeight(
-                        layout.designWidth,
-                        layout.designHeight,
-                        viewportWidth
+                    val height = BdsViewportCalculator.panelHeight(
+                        layout.designWidth, layout.designHeight, viewportWidth, orientation
                     )
                     Timber.d(
-                        "BDS: keyboard height from PANEL.SIZE=${layout.designWidth}x${layout.designHeight}, " +
-                            "viewportWidth=$viewportWidth, legacyPortraitScale=1.05, height=$height"
+                        "BDS: keyboard height from ${layout.id} PANEL.SIZE=" +
+                            "${layout.designWidth}x${layout.designHeight}, viewportWidth=$viewportWidth, height=$height"
                     )
                     return height
                 }
@@ -197,9 +199,7 @@ class InputView(
 
     private val keyboardSidePaddingPx: Int
         get() {
-            if (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT &&
-                BdsSkinManager.skinForTheme(theme.name) != null
-            ) return 0
+            if (bdsTextLayout != null) return 0
             val value = when (resources.configuration.orientation) {
                 Configuration.ORIENTATION_LANDSCAPE -> keyboardSidePaddingLandscape
                 else -> keyboardSidePadding
@@ -209,9 +209,7 @@ class InputView(
 
     private val keyboardBottomPaddingPx: Int
         get() {
-            if (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT &&
-                BdsSkinManager.skinForTheme(theme.name) != null
-            ) return 0
+            if (bdsTextLayout != null) return 0
             val value = when (resources.configuration.orientation) {
                 Configuration.ORIENTATION_LANDSCAPE -> keyboardBottomPaddingLandscape
                 else -> keyboardBottomPadding
@@ -219,19 +217,25 @@ class InputView(
             return dp(value)
         }
 
-    private val bdsSkin = if (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT) {
-        BdsSkinManager.skinForTheme(theme.name)
-    } else null
+    private val bdsSkin = BdsSkinManager.skinForTheme(theme.name)
+    private val bdsOrientation = BdsLayoutResolver.orientation(resources.configuration)
+    private val bdsTextLayout = bdsSkin?.let {
+        BdsLayoutResolver.resolve(it, bdsOrientation, BdsLayoutResolver.Purpose.Text26)
+    }
 
     private val bdsCandidateHeightPx: Int?
         get() {
             val skin = bdsSkin ?: return null
-            val candidate = skin.portraitCandidate ?: return null
             val width = resources.displayMetrics.widthPixels
-            // The CAND.VIEW_RECT owns candidate-bar geometry. Atlas tile dimensions
-            // are source pixels and must not replace the configured destination height.
-            return (candidate.viewRect.height * width.toFloat() /
-                skin.portraitPinyin26.designWidth).roundToInt()
+            val orientation = BdsLayoutResolver.orientation(resources.configuration)
+            val height = skin.candidateSurfaceHeight(orientation, width) ?: return null
+            skin.candidates[orientation]?.let { candidate ->
+                Timber.d(
+                    "BDS: candidate contentRect=${candidate.viewRect}, " +
+                        "surface=${width}x$height backgroundStyle=${candidate.backgroundStyle}"
+                )
+            }
+            return height
         }
 
     @Keep
@@ -264,12 +268,33 @@ class InputView(
 
         customBackground.imageDrawable = theme.backgroundDrawable(keyBorder)
 
-        if (bdsSkin != null) {
+        if (bdsSkin != null && (bdsTextLayout != null || horizontalCandidate.bdsRenderer != null)) {
+            if (bdsTextLayout != null) {
             customBackground.setBackgroundColor(Color.TRANSPARENT)
-            kawaiiBar.useBdsChrome()
+            }
+            kawaiiBar.useBdsChrome(horizontalCandidate.bdsRenderer?.barBackgroundDrawable())
+            // The BDS panel is later in child order than KawaiiBar. Disabling
+            // clipping lets its procedural foreground effects cross the panel
+            // boundary and composite over candidate chrome without moving either.
+            windowManager.view.clipChildren = false
+            windowManager.view.clipToPadding = false
+            // Keep the BDS panel artwork below every Fcitx input window. This lets
+            // NumberKeyboard/Picker retain Fcitx behavior without replacing the
+            // skin surface with an opaque generic keyboard background.
+            bdsTextLayout?.let { backdropLayout ->
+                windowManager.view.addView(
+                    createBdsPanelBackdrop(context, bdsSkin, backdropLayout),
+                    0,
+                    android.widget.FrameLayout.LayoutParams(matchParent, matchParent)
+                )
+            }
         }
 
         keyboardView = constraintLayout {
+            if (bdsTextLayout != null) {
+                clipChildren = false
+                clipToPadding = false
+            }
             // allow MotionEvent to be delivered to keyboard while pressing on padding views.
             // although it should be default for apps targeting Honeycomb (3.0, API 11) and higher,
             // but it's not the case on some devices ... just set it here

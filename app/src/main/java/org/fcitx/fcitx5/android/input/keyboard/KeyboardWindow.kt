@@ -5,7 +5,6 @@
 package org.fcitx.fcitx5.android.input.keyboard
 
 import android.text.InputType
-import android.content.res.Configuration
 import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -27,6 +26,7 @@ import org.fcitx.fcitx5.android.input.dependency.theme
 import org.fcitx.fcitx5.android.input.picker.PickerWindow
 import org.fcitx.fcitx5.android.input.popup.PopupActionListener
 import org.fcitx.fcitx5.android.input.keyboard.bds.BdsKeyboard
+import org.fcitx.fcitx5.android.input.keyboard.bds.BdsLayoutResolver
 import org.fcitx.fcitx5.android.input.popup.PopupComponent
 import org.fcitx.fcitx5.android.input.wm.EssentialWindow
 import org.fcitx.fcitx5.android.input.wm.InputWindow
@@ -69,14 +69,34 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
 
     private lateinit var keyboardView: FrameLayout
 
+    private val bds by lazy { BdsSkinManager.skinForTheme(theme.name) }
+    private val bdsOrientation by lazy {
+        BdsLayoutResolver.orientation(context.resources.configuration)
+    }
+    private var currentIme: InputMethodEntry? = null
+    private var textBdsLayoutName: String? = null
+
+    private fun createTextKeyboard(ime: InputMethodEntry?): BaseKeyboard {
+        val skin = bds ?: return TextKeyboard(context, theme)
+        val layout = BdsLayoutResolver.resolve(
+            skin, bdsOrientation, BdsLayoutResolver.Purpose.Text26, ime
+        ) ?: return TextKeyboard(context, theme)
+        textBdsLayoutName = layout.id.name
+        return BdsKeyboard(context, theme, skin, layout)
+    }
+
+    private fun createNumberKeyboard(): BaseKeyboard {
+        val skin = bds ?: return NumberKeyboard(context, theme)
+        val layout = BdsLayoutResolver.resolve(
+            skin, bdsOrientation, BdsLayoutResolver.Purpose.Number26
+        ) ?: return NumberKeyboard(context, theme)
+        return BdsKeyboard(context, theme, skin, layout)
+    }
+
     private val keyboards: HashMap<String, BaseKeyboard> by lazy {
-        val bds = if (context.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT) {
-            BdsSkinManager.skinForTheme(theme.name)
-        } else null
         hashMapOf(
-            TextKeyboard.Name to (bds?.let { BdsKeyboard(context, theme, it) }
-                ?: TextKeyboard(context, theme)),
-            NumberKeyboard.Name to NumberKeyboard(context, theme)
+            TextKeyboard.Name to createTextKeyboard(currentIme),
+            NumberKeyboard.Name to createNumberKeyboard()
         )
     }
     private var currentKeyboardName = ""
@@ -98,7 +118,12 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
 
     // This will be called EXACTLY ONCE
     override fun onCreateView(): View {
-        keyboardView = context.frameLayout(R.id.keyboard_view)
+        keyboardView = context.frameLayout(R.id.keyboard_view).apply {
+            if (BdsSkinManager.skinForTheme(theme.name) != null) {
+                clipChildren = false
+                clipToPadding = false
+            }
+        }
         attachLayout(TextKeyboard.Name)
         return keyboardView
     }
@@ -157,6 +182,19 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
     }
 
     override fun onImeUpdate(ime: InputMethodEntry) {
+        currentIme = ime
+        val desiredLayout = bds?.let {
+            BdsLayoutResolver.resolve(
+                it, bdsOrientation, BdsLayoutResolver.Purpose.Text26, ime
+            )
+        }
+        if (desiredLayout != null && desiredLayout.id.name != textBdsLayoutName) {
+            val wasAttached = currentKeyboardName == TextKeyboard.Name
+            if (wasAttached) detachCurrentLayout()
+            keyboards[TextKeyboard.Name] = BdsKeyboard(context, theme, bds!!, desiredLayout)
+            textBdsLayoutName = desiredLayout.id.name
+            if (wasAttached) attachLayout(TextKeyboard.Name)
+        }
         currentKeyboard?.onInputMethodUpdate(ime)
     }
 

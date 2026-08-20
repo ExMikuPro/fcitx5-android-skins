@@ -102,3 +102,11 @@ lint/tmp/
 
 ### Kotlin ###
 .kotlin/
+
+# Python developer tools
+__pycache__/
+*.py[cod]
+
+# Local code index and proprietary BDS samples
+/.codegraph/
+/*.bds

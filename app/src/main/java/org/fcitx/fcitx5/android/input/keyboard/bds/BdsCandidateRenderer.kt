@@ -16,8 +16,8 @@ import android.graphics.drawable.Drawable
 import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
-import org.fcitx.fcitx5.android.data.theme.bds.BdsCandidateIcon
 import org.fcitx.fcitx5.android.data.theme.bds.BdsImageRef
+import org.fcitx.fcitx5.android.data.theme.bds.BdsOrientation
 import org.fcitx.fcitx5.android.data.theme.bds.BdsSkin
 import org.fcitx.fcitx5.android.data.theme.bds.BdsStyle
 import org.fcitx.fcitx5.android.input.candidates.CandidateItemUi
@@ -30,15 +30,21 @@ import kotlin.math.roundToInt
  */
 class BdsCandidateRenderer(
     private val context: Context,
-    private val skin: BdsSkin
+    private val skin: BdsSkin,
+    private val orientation: BdsOrientation
 ) {
-    private val layout = requireNotNull(skin.portraitCandidate)
+    private val layout = requireNotNull(skin.candidates[orientation])
+    private val resources = requireNotNull(skin.resources[orientation])
     private val definition = layout.definition
     private val bitmaps = mutableMapOf<String, Bitmap?>()
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
 
     fun heightPx(viewportWidth: Int): Int =
-        (layout.viewRect.height * scale(viewportWidth)).roundToInt()
+        requireNotNull(skin.candidateSurfaceHeight(orientation, viewportWidth))
+
+    /** Persistent chrome behind every KawaiiBar state, including an empty candidate list. */
+    fun barBackgroundDrawable(): Drawable? =
+        definition.backgroundStyle?.let { styleDrawable(it, true) }
 
     fun configureItem(ui: CandidateItemUi, position: Int, viewportWidth: Int) {
         val scale = scale(viewportWidth)
@@ -49,8 +55,8 @@ class BdsCandidateRenderer(
         }
         // FIRST_FORE is commonly a color-only override. Font metrics continue to
         // come from CAND.FORE_STYLE, exactly as observed in the Golden Sample.
-        val baseStyle = definition.foregroundStyle?.let(skin.styles::get)
-        val colorStyle = colorStyleId?.let(skin.styles::get)
+        val baseStyle = definition.foregroundStyle?.let(resources.styles::get)
+        val colorStyle = colorStyleId?.let(resources.styles::get)
         val foreground = colorStyle?.normalColor
             ?: baseStyle?.normalColor
             ?: ui.theme.candidateTextColor
@@ -70,7 +76,8 @@ class BdsCandidateRenderer(
         CandidateBarView(horizontalView, expandButton)
 
     private fun scale(viewportWidth: Int): Float =
-        viewportWidth / skin.portraitPinyin26.designWidth.toFloat()
+        viewportWidth /
+            resources.designWidth.toFloat()
 
     private fun styleDrawable(styleId: Int, active: Boolean): Drawable =
         BdsStyleDrawable(styleId, active)
@@ -79,19 +86,12 @@ class BdsCandidateRenderer(
         private val candidates: RecyclerView,
         private val expandButton: View
     ) : ViewGroup(context) {
-        private val activeIcon: BdsCandidateIcon? = definition.icons
-            // Golden/reference evidence maps PERSIST=2 to the active candidate state.
-            // Keep the raw value in the model so more state mappings can be added later.
-            .lastOrNull { it.persist == 2 && it.stateStyle != null }
-            ?: definition.icons.lastOrNull { it.persist == 2 }
-
         init {
-            setWillNotDraw(false)
             candidates.clipToPadding = false
             addView(candidates)
-            // The real BDS foreground is drawn by this surface. The transparent view
-            // preserves Fcitx's existing expand/collapse callback and accessibility node.
-            expandButton.alpha = 0f
+            // BDS supplies only the candidate surface. Keep Fcitx's original
+            // expand/collapse icon, state, click target and accessibility node.
+            expandButton.alpha = 1f
             addView(expandButton)
         }
 
@@ -101,85 +101,48 @@ class BdsCandidateRenderer(
             setMeasuredDimension(width, height)
             val s = scale(width)
             val padding = definition.padding
-            val contentWidth = (width - ((padding.left + padding.right) * s).roundToInt())
+            val buttonSize = minOf(
+                height,
+                (40f * context.resources.displayMetrics.density).roundToInt()
+            )
+            val contentLeft = ((layout.viewRect.x + padding.left) * s).roundToInt()
+            val contentWidth =
+                ((layout.viewRect.width - padding.left - padding.right) * s).roundToInt()
+                .coerceAtMost((width - buttonSize - contentLeft).coerceAtLeast(0))
                 .coerceAtLeast(0)
-            val contentHeight = (height - ((padding.top + padding.bottom) * s).roundToInt())
+            val contentHeight = ((layout.viewRect.height - padding.top - padding.bottom) * s)
+                .roundToInt()
                 .coerceAtLeast(0)
             candidates.setPadding((definition.firstGap * s).roundToInt(), 0, 0, 0)
             candidates.measure(
                 MeasureSpec.makeMeasureSpec(contentWidth, MeasureSpec.EXACTLY),
                 MeasureSpec.makeMeasureSpec(contentHeight, MeasureSpec.EXACTLY)
             )
-            val icon = activeIcon
-            val iconRect = icon?.let { iconRect(it, width) }
             expandButton.measure(
-                MeasureSpec.makeMeasureSpec(iconRect?.width()?.roundToInt() ?: 0, MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(iconRect?.height()?.roundToInt() ?: 0, MeasureSpec.EXACTLY)
+                MeasureSpec.makeMeasureSpec(buttonSize, MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(buttonSize, MeasureSpec.EXACTLY)
             )
         }
 
         override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
             val s = scale(width)
             val padding = definition.padding
-            val contentLeft = (padding.left * s).roundToInt()
-            val contentTop = (padding.top * s).roundToInt()
+            val contentLeft = ((layout.viewRect.x + padding.left) * s).roundToInt()
+            val contentTop = ((layout.viewRect.y + padding.top) * s).roundToInt()
             candidates.layout(
                 contentLeft,
                 contentTop,
                 contentLeft + candidates.measuredWidth,
                 contentTop + candidates.measuredHeight
             )
-            val rect = activeIcon?.let { iconRect(it, width) }
-            if (rect == null) {
-                expandButton.layout(0, 0, 0, 0)
-            } else {
-                expandButton.layout(
-                    rect.left.roundToInt(), rect.top.roundToInt(),
-                    rect.right.roundToInt(), rect.bottom.roundToInt()
-                )
-            }
+            val buttonTop = (height - expandButton.measuredHeight) / 2
+            expandButton.layout(
+                width - expandButton.measuredWidth,
+                buttonTop,
+                width,
+                buttonTop + expandButton.measuredHeight
+            )
         }
-
-        override fun onDraw(canvas: Canvas) {
-            super.onDraw(canvas)
-            // cand1.cnd uses the highlight image for the active candidate surface;
-            // STYLE117 in the Golden Sample intentionally has no NM_IMG.
-            definition.backgroundStyle?.let { drawStyle(canvas, it, fullBounds(), true, true) }
-        }
-
-        override fun dispatchDraw(canvas: Canvas) {
-            super.dispatchDraw(canvas)
-            activeIcon?.let { icon ->
-                val bounds = iconRect(icon, width)
-                icon.backgroundStyle?.let { drawStyle(canvas, it, bounds, false, true) }
-                icon.foregroundStyle?.let { drawStyle(canvas, it, bounds, false, false) }
-                // Animation-only icons are deliberately omitted in static rendering.
-                // Their parsed ANIM_STYLE chain is retained for the later animation mode.
-            }
-        }
-
-        private fun fullBounds() = RectF(0f, 0f, width.toFloat(), height.toFloat())
-    }
-
-    private fun iconRect(icon: BdsCandidateIcon, viewportWidth: Int): RectF {
-        val size = icon.size ?: return RectF()
-        val position = icon.position
-        val designWidth = skin.portraitPinyin26.designWidth.toFloat()
-        val designHeight = layout.viewRect.height.toFloat()
-        val anchorX = when (icon.anchorType) {
-            4 -> 0f
-            5 -> designWidth / 2f
-            6 -> designWidth
-            else -> 0f
-        }
-        val anchorY = when (icon.anchorType) {
-            4, 5, 6 -> designHeight / 2f
-            else -> 0f
-        }
-        val s = scale(viewportWidth)
-        val left = (anchorX + (position?.x ?: 0)) * s
-        val top = (anchorY + (position?.y ?: 0)) * s
-        return RectF(left, top, left + size.width * s, top + size.height * s)
     }
 
     private fun drawStyle(
@@ -189,7 +152,7 @@ class BdsCandidateRenderer(
         pressed: Boolean,
         stretch: Boolean
     ) {
-        val style = skin.styles[styleId] ?: return
+        val style = resources.styles[styleId] ?: return
         val color = if (pressed) style.pressedColor ?: style.normalColor else style.normalColor
         color?.let {
             val old = paint.color
@@ -203,7 +166,7 @@ class BdsCandidateRenderer(
 
     private fun drawImage(canvas: Canvas, ref: BdsImageRef, bounds: RectF, stretch: Boolean) {
         val viewportWidth = context.resources.displayMetrics.widthPixels
-        val image = skin.image(ref.atlas, viewportWidth) ?: return
+        val image = skin.image(orientation, ref.atlas, viewportWidth) ?: return
         val tile = image.tiles[ref.tile] ?: return
         val bitmap = bitmaps.getOrPut(image.pngPath) { BitmapFactory.decodeFile(image.pngPath) } ?: return
         val destination = if (stretch) bounds else {

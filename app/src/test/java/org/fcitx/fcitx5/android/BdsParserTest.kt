@@ -5,9 +5,13 @@
 package org.fcitx.fcitx5.android
 
 import org.fcitx.fcitx5.android.data.theme.bds.BdsArchiveReader
+import org.fcitx.fcitx5.android.data.theme.bds.BdsAnimatedNumber
+import org.fcitx.fcitx5.android.data.theme.bds.BdsAnimation
+import org.fcitx.fcitx5.android.data.theme.bds.BdsCompositeMethod
 import org.fcitx.fcitx5.android.data.theme.bds.BdsCandidateParser
 import org.fcitx.fcitx5.android.data.theme.bds.BdsException
 import org.fcitx.fcitx5.android.data.theme.bds.BdsParser
+import org.fcitx.fcitx5.android.data.theme.bds.BdsOrientation
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -31,10 +35,11 @@ class BdsParserTest {
     fun parsesMinimalBdsAndCaseInsensitivePort() {
         val root = minimalSkin("Port", extraKeyProperty = "FUTURE_PROPERTY=ok")
         val skin = BdsParser.parse(root, "test")
+        val pinyin = requireNotNull(skin.portraitPinyin26)
         assertEquals("Test Skin", skin.metadata.name)
         assertEquals("Tester", skin.metadata.author)
-        assertEquals(1080, skin.portraitPinyin26.designWidth)
-        assertEquals("q", skin.portraitPinyin26.keys.single().actions.values.single().raw)
+        assertEquals(1080, pinyin.designWidth)
+        assertEquals("q", pinyin.keys.single().actions.values.single().raw)
         assertTrue(skin.unsupportedProperties.any { it.contains("FUTURE_PROPERTY") })
     }
 
@@ -98,6 +103,95 @@ class BdsParserTest {
         assertEquals("kept", candidate.sections["CAND"]?.get("FUTURE_FIELD"))
     }
 
+    @Test
+    fun parsesProceduralAnimationChainsAndRandomValues() {
+        val root = minimalSkin("port")
+        val port = File(root, "port")
+        File(port, "py_26.ini").writeText(
+            """
+            [PANEL]
+            KEY_NUM=1
+            ANIM_STYLE=315
+            ANIM_LEVEL=1
+            [KEY1]
+            VIEW_RECT=0,0,100,100
+            CENTER=q
+            BACK_ANIM_STYLE=263
+            FORE_STYLE=1,2
+            FORE_ANIM_STYLE=263,328
+            """.trimIndent()
+        )
+        val res = File(port, "ReS")
+        File(res, "default.css").writeText(
+            """
+            [STYLE263]
+            PRESS_ANIM=5
+            [STYLE315]
+            SHOW_ANIM=23
+            EVENT1=23
+            [STYLE328]
+            PRESS_ANIM=34
+            """.trimIndent()
+        )
+        File(res, "anim.ini").writeText(
+            """
+            [GLOBAL]
+            ANIM_NUM=60
+            [ANIM5]
+            TYPE=4
+            FROM=100,100
+            TO=125,125
+            DURATION=125
+            REPEAT_MODE=1
+            INTPOL=2
+            PIVOT=50,90
+            [ANIM23]
+            CATEGORY=3
+            LOCATION=1
+            LIFE=5000
+            EMIT_REGION=0,0,1,1
+            TOTAL_NUMBER=250
+            BIRTH_RATE=25
+            EMIT_TYPE=0
+            PARTICLE_IMAGE=317,318
+            VELOCITY=30,60
+            [ANIM34]
+            BUILD_NUM=2
+            BUILD_LIST=35,36
+            BUILD_METHOD=0
+            [ANIM35]
+            TYPE=2
+            FROM=rand(50,80),20
+            TO=rand(150,250),-150
+            DURATION=250
+            [ANIM36]
+            TYPE=1
+            FROM=rand(-45,45)
+            TO=rand(-90,90)
+            DURATION=250
+            """.trimIndent()
+        )
+
+        val skin = BdsParser.parse(root)
+        val pinyin = requireNotNull(skin.portraitPinyin26)
+        assertEquals(315, pinyin.animationStyle)
+        assertEquals(263, pinyin.keys.single().backgroundAnimationStyle)
+        assertEquals(listOf(263, 328), pinyin.keys.single().foregroundAnimationStyles)
+        assertEquals(5, skin.animationStyles.getValue(263).pressAnimationId)
+        assertEquals(23, skin.animationStyles.getValue(315).eventAnimationIds[1])
+
+        val scale = skin.animations.getValue(5) as BdsAnimation.Primitive
+        assertEquals(4, scale.rawType)
+        assertEquals(125L, scale.durationMillis)
+        val translation = skin.animations.getValue(35) as BdsAnimation.Primitive
+        assertTrue(translation.from!!.components.first() is BdsAnimatedNumber.RandomRange)
+        val composite = skin.animations.getValue(34) as BdsAnimation.Composite
+        assertEquals(BdsCompositeMethod.Parallel, composite.method)
+        val emitter = skin.animations.getValue(23) as BdsAnimation.ParticleEmitter
+        assertEquals(listOf(317, 318), emitter.particleStyleIds)
+        assertEquals(5000L, emitter.lifeMillis)
+    }
+
     @Test(expected = BdsException::class)
     fun corruptNonZipIsRejected() {
         val archive = File(temp, "bad.bds").apply { writeText("not a zip") }
@@ -118,6 +212,9 @@ class BdsParserTest {
     @Test
     fun parsesGoldenSampleMetadataWhenAvailable() {
         val archive = sequenceOf(
+            File("local-testdata/golden-sample/aef13cdad73a5b480cb57076dd53a050.bds"),
+            File("../local-testdata/golden-sample/aef13cdad73a5b480cb57076dd53a050.bds"),
+            File("aef13cdad73a5b480cb57076dd53a050.bds"),
             File("local-testdata/target.bds"),
             File("../local-testdata/target.bds"),
             File("/home/linsiling/Desktop/8f1c13c12d35742fa0fd249e54412117.bds")
@@ -126,14 +223,40 @@ class BdsParserTest {
         val root = File(temp, "golden")
         BdsArchiveReader.extract(requireNotNull(archive), root)
         val skin = BdsParser.parse(root, "golden")
+        val pinyin = requireNotNull(skin.portraitPinyin26)
         assertEquals("初音未来", skin.metadata.name)
-        assertEquals(35, skin.portraitPinyin26.keys.size)
-        assertEquals(2, skin.portraitPinyin26.decorations.size)
-        assertEquals(1080, skin.selectResourceBucket(1080))
+        assertEquals(35, pinyin.keys.size)
+        assertEquals(2, pinyin.decorations.size)
+        assertEquals(116, pinyin.backgroundStyle)
+        assertEquals("1", skin.portraitNumber26?.keys?.first()?.actions?.values?.first()?.raw)
+        assertEquals(116, skin.portraitNumber26?.backgroundStyle)
+        assertEquals(2, skin.portraitNumber26?.decorations?.size)
+        assertEquals(1080, skin.selectResourceBucket(BdsOrientation.Portrait, 1080))
         assertEquals("btn", skin.image("btn", 1080)?.name)
         assertEquals(117, skin.portraitCandidate?.backgroundStyle)
         assertEquals("cand", skin.styles[117]?.normalImage?.atlas)
         assertEquals(158, skin.image("cand", 1080)?.tiles?.get(1)?.source?.height)
+        assertEquals(121, skin.portraitCandidate?.viewRect?.height)
+        assertEquals(158, skin.portraitCandidateSurfaceHeight(1080))
+        assertEquals(79, skin.portraitCandidateSurfaceHeight(540))
+        assertEquals(42, skin.animations.size)
+        assertEquals(23, skin.animationStyles.getValue(315).showAnimationId)
+        val panelEmitter = skin.animations.getValue(23) as BdsAnimation.ParticleEmitter
+        assertEquals(listOf(317, 318, 319, 320, 321, 322), panelEmitter.particleStyleIds)
+        assertEquals(250, panelEmitter.totalNumber)
+        assertEquals(5, skin.animationStyles.getValue(263).pressAnimationId)
+        assertEquals(59, skin.layouts.size)
+        assertEquals(26, skin.layouts.keys.count { it.orientation == BdsOrientation.Portrait })
+        assertEquals(33, skin.layouts.keys.count { it.orientation == BdsOrientation.Landscape })
+        assertEquals(67, skin.iniDocuments.size)
+        assertTrue("port/gen.ini" in skin.iniDocuments)
+        assertTrue("port/logo.ini" in skin.iniDocuments)
+        assertTrue("port/res/event.ini" in skin.iniDocuments)
+        assertTrue("land/res/anim.ini" in skin.iniDocuments)
+        assertEquals(1920, skin.layout(BdsOrientation.Landscape, "py_26")?.designWidth)
+        assertEquals(766, skin.layout(BdsOrientation.Portrait, "en_26_h")?.designHeight)
+        assertEquals("symbol_h", skin.layout(BdsOrientation.Portrait, "en_26_h")
+            ?.moreProperties?.get("SYM_LAYOUT"))
         assertTrue(skin.unsupportedProperties.none { it.contains("missing image btn") })
     }
 
