@@ -75,8 +75,7 @@ class BdsKeyboard(
 ) :
     BaseKeyboard(context, theme, emptyList()) {
 
-    private enum class CapsState { None, Once, Lock }
-    private var capsState = CapsState.None
+    private var capsState = BdsCapsState.None
 
     private val surface = BdsKeyboardSurface(
         context,
@@ -86,6 +85,9 @@ class BdsKeyboard(
             if (functionActionHandler?.invoke(action.raw) != true) {
                 mapAction(action)?.let { onAction(it) }
             }
+        },
+        onCapsLock = {
+            onAction(KeyAction.CapsAction(true))
         },
         onShowCharacterPopup = { viewId, label, bounds ->
             onPopupAction(
@@ -115,8 +117,8 @@ class BdsKeyboard(
     }
 
     override fun onAttach() {
-        capsState = CapsState.None
-        surface.caps = false
+        capsState = BdsCapsState.None
+        surface.capsState = capsState
     }
 
     override fun onReturnActionUpdate(action: ReturnKeyAction) {
@@ -128,25 +130,25 @@ class BdsKeyboard(
         when (action) {
             is KeyAction.CapsAction -> {
                 capsState = when {
-                    action.lock && capsState == CapsState.Lock -> CapsState.None
-                    action.lock -> CapsState.Lock
-                    capsState == CapsState.None -> CapsState.Once
-                    else -> CapsState.None
+                    action.lock && capsState == BdsCapsState.Lock -> BdsCapsState.None
+                    action.lock -> BdsCapsState.Lock
+                    capsState == BdsCapsState.None -> BdsCapsState.Once
+                    else -> BdsCapsState.None
                 }
-                surface.caps = capsState != CapsState.None
+                surface.capsState = capsState
                 return
             }
             is KeyAction.FcitxKeyAction -> if (action.act.length == 1 && action.act[0].isLetter()) {
                 transformed = when (capsState) {
-                    CapsState.None -> action.copy(act = action.act.lowercase())
-                    CapsState.Once -> action.copy(
+                    BdsCapsState.None -> action.copy(act = action.act.lowercase())
+                    BdsCapsState.Once -> action.copy(
                         act = action.act.uppercase(),
                         states = KeyStates(KeyState.Virtual, KeyState.Shift)
                     ).also {
-                        capsState = CapsState.None
-                        surface.caps = false
+                        capsState = BdsCapsState.None
+                        surface.capsState = capsState
                     }
-                    CapsState.Lock -> action.copy(
+                    BdsCapsState.Lock -> action.copy(
                         act = action.act.uppercase(),
                         states = KeyStates(KeyState.Virtual, KeyState.CapsLock)
                     )
@@ -207,8 +209,25 @@ internal fun isBdsBackspaceAction(action: BdsAction?): Boolean {
     return mapped.sym == KeySym(FcitxKeyMapping.FcitxKey_BackSpace)
 }
 
+internal fun isBdsCapsAction(action: BdsAction?): Boolean =
+    action?.let(::mapBdsAction) is KeyAction.CapsAction
+
 internal fun bdsAnimationsEnabled(layoutId: BdsLayoutId): Boolean =
     layoutId.orientation == BdsOrientation.Portrait
+
+internal fun resolveBdsShiftedLayout(skin: BdsSkin, layout: BdsLayout): BdsLayout? {
+    val configured = layout.moreProperties.entries
+        .firstOrNull { it.key.equals("EN_26S_LAYOUT", ignoreCase = true) }
+        ?.value
+    val conventional = if (layout.id.name.endsWith("_h", ignoreCase = true)) {
+        "en_26s_h"
+    } else {
+        "en_26s"
+    }
+    return listOfNotNull(configured, conventional)
+        .distinctBy(String::lowercase)
+        .firstNotNullOfOrNull { skin.layout(layout.id.orientation, it) }
+}
 
 internal fun bdsPopupPresetLabel(action: BdsAction?, caps: Boolean): String? {
     val raw = action?.raw ?: return null
@@ -227,6 +246,7 @@ internal fun createBdsPanelBackdrop(
         skin = skin,
         layout = layout,
         onAction = {},
+        onCapsLock = {},
         onShowCharacterPopup = { _, _, _ -> },
         onPopupChangeFocus = { _, _, _ -> false },
         onPopupTrigger = { _ -> false },
@@ -239,6 +259,7 @@ private class BdsKeyboardSurface(
     private val skin: BdsSkin,
     private val layout: BdsLayout,
     private val onAction: (BdsAction) -> Unit,
+    private val onCapsLock: () -> Unit,
     private val onShowCharacterPopup: (Int, String, Rect) -> Unit,
     private val onPopupChangeFocus: (Int, Float, Float) -> Boolean,
     private val onPopupTrigger: (Int) -> Boolean,
@@ -262,11 +283,16 @@ private class BdsKeyboardSurface(
     private var particleCanvas: Canvas? = null
     private val particleDestination = RectF()
 
-    var caps: Boolean = false
+    private val shiftedLayout = resolveBdsShiftedLayout(skin, layout)
+    private val shiftedKeys = shiftedLayout?.keys.orEmpty().associateBy { it.section.uppercase() }
+    private val shiftedDecorations = shiftedLayout?.decorations.orEmpty()
+        .associateBy { it.section.uppercase() }
+
+    var capsState: BdsCapsState = BdsCapsState.None
         set(value) {
             field = value
-            childrenViews.forEach {
-                it.caps = value
+            decorations.plus(childrenViews).forEach {
+                it.capsState = value
                 it.invalidate()
             }
         }
@@ -283,7 +309,8 @@ private class BdsKeyboardSurface(
 
     private val decorations = if (renderBackdrop) layout.decorations.map { key ->
         BdsKeyView(
-            context, key, skin, layout, bitmaps, onAction, onShowCharacterPopup,
+            context, key, shiftedDecorations[key.section.uppercase()], shiftedLayout,
+            skin, layout, bitmaps, onAction, onCapsLock, onShowCharacterPopup,
             onPopupChangeFocus, onPopupTrigger, animationsEnabled,
             isDecoration = true
         )
@@ -291,7 +318,8 @@ private class BdsKeyboardSurface(
     private val childrenViews = layout.keys.map { key ->
         if (renderKeys) {
             BdsKeyView(
-                context, key, skin, layout, bitmaps, onAction, onShowCharacterPopup,
+                context, key, shiftedKeys[key.section.uppercase()], shiftedLayout,
+                skin, layout, bitmaps, onAction, onCapsLock, onShowCharacterPopup,
                 onPopupChangeFocus, onPopupTrigger, animationsEnabled,
                 isDecoration = false
             )
@@ -487,10 +515,13 @@ private class BdsKeyboardSurface(
 private class BdsKeyView(
     context: Context,
     private val key: BdsKey,
+    private val shiftedKey: BdsKey?,
+    private val shiftedLayout: BdsLayout?,
     private val skin: BdsSkin,
     private val layout: BdsLayout,
     private val bitmaps: MutableMap<String, Bitmap?>,
     private val onAction: (BdsAction) -> Unit,
+    private val onCapsLock: () -> Unit,
     private val onShowCharacterPopup: (Int, String, Rect) -> Unit,
     private val onPopupChangeFocus: (Int, Float, Float) -> Boolean,
     private val onPopupTrigger: (Int) -> Boolean,
@@ -515,7 +546,7 @@ private class BdsKeyView(
     private val hapticOnRepeat by AppPrefs.getInstance().keyboard.hapticOnRepeat
 
     var returnAction: ReturnKeyAction = ReturnKeyAction.Enter
-    var caps: Boolean = false
+    var capsState: BdsCapsState = BdsCapsState.None
 
     init {
         setWillNotDraw(false)
@@ -524,6 +555,10 @@ private class BdsKeyView(
             id = View.generateViewId()
             val centerAction = key.actions[BdsDirection.Center]
             setOnClickListener { centerAction?.let(onAction) }
+            if (isBdsCapsAction(centerAction)) {
+                doubleTapEnabled = true
+                onDoubleTapListener = { onCapsLock() }
+            }
             if (isBdsBackspaceAction(centerAction)) {
                 soundEffect = InputFeedbacks.SoundEffect.Delete
                 repeatEnabled = true
@@ -539,7 +574,7 @@ private class BdsKeyView(
             if (holdAction != null || hasPopupPreset) {
                 setOnLongClickListener {
                     val label = bdsPopupPresetLabel(
-                        key.actions[BdsDirection.Center], caps
+                        key.actions[BdsDirection.Center], capsState != BdsCapsState.None
                     )
                     if (label != null) {
                         onShowCharacterPopup(id, label, popupBounds())
@@ -626,12 +661,19 @@ private class BdsKeyView(
             viewRect.right - layoutBounds.left,
             viewRect.bottom - layoutBounds.top
         )
+        val visualKey = shiftedKey.takeIf { capsState != BdsCapsState.None } ?: key
+        val visualVariants = shiftedLayout?.variants
+            .takeIf { visualKey === shiftedKey }
+            ?: layout.variants
+        val visualOffsets = shiftedLayout?.offsets
+            .takeIf { visualKey === shiftedKey }
+            ?: layout.offsets
         val variant = BdsKeyStateResolver.resolve(
-            key, returnAction, layout.variants, caps
+            visualKey, returnAction, visualVariants, capsState
         )
-        val backgroundStyle = variant?.backgroundStyle ?: key.backgroundStyle
-        val foregroundStyles = variant?.foregroundStyles ?: key.foregroundStyles
-        val positionTypes = variant?.positionTypes ?: key.positionTypes
+        val backgroundStyle = variant?.backgroundStyle ?: visualKey.backgroundStyle
+        val foregroundStyles = variant?.foregroundStyles ?: visualKey.foregroundStyles
+        val positionTypes = variant?.positionTypes ?: visualKey.positionTypes
         val hasAnimation = wholeAnimation != null || backgroundAnimation != null ||
             foregroundAnimations.any { it != null }
         // A child view may redraw from its own display list without executing the
@@ -658,7 +700,7 @@ private class BdsKeyView(
             canvas.restoreToCount(save)
         }
         foregroundStyles.forEachIndexed { index, styleId ->
-            val offset = layout.offsets[positionTypes.getOrNull(index)]
+            val offset = visualOffsets[positionTypes.getOrNull(index)]
             val foregroundFrame = frame(foregroundAnimations.getOrNull(index))
             val save = canvas.save()
             foregroundFrame?.let {
@@ -691,16 +733,20 @@ private class BdsKeyView(
             val animationId = styleId?.let(bdsResources.animationStyles::get)?.pressAnimationId ?: return null
             return BdsAnimationInstance.create(animationId, bdsResources.animations, random, now)
         }
+        val visualKey = shiftedKey.takeIf { capsState != BdsCapsState.None } ?: key
+        val visualVariants = shiftedLayout?.variants
+            .takeIf { visualKey === shiftedKey }
+            ?: layout.variants
         val variant = BdsKeyStateResolver.resolve(
-            key, returnAction, layout.variants, caps
+            visualKey, returnAction, visualVariants, capsState
         )
-        wholeAnimation = create(variant?.animationStyle ?: key.animationStyle)
+        wholeAnimation = create(variant?.animationStyle ?: visualKey.animationStyle)
         backgroundAnimation = create(
-            variant?.backgroundAnimationStyle ?: key.backgroundAnimationStyle
+            variant?.backgroundAnimationStyle ?: visualKey.backgroundAnimationStyle
         )
         val animationStyles = variant?.foregroundAnimationStyles
             ?.takeIf { it.isNotEmpty() }
-            ?: key.foregroundAnimationStyles
+            ?: visualKey.foregroundAnimationStyles
         foregroundAnimations = animationStyles.map(::create).toMutableList()
         postInvalidateOnAnimation()
     }

@@ -35,6 +35,14 @@ class BdsActionMappingTest {
     }
 
     @Test
+    fun capsDoubleTapIsSelectedByActionSemantics() {
+        assertTrue(isBdsCapsAction(BdsAction("F10")))
+        assertTrue(isBdsCapsAction(BdsAction("F11")))
+        assertFalse(isBdsCapsAction(BdsAction("F36")))
+        assertFalse(isBdsCapsAction(BdsAction("a")))
+    }
+
+    @Test
     fun portraitEnglishLayoutKeepsBdsAnimationsEnabled() {
         assertTrue(bdsAnimationsEnabled(BdsLayoutId(BdsOrientation.Portrait, "en_26")))
         assertFalse(bdsAnimationsEnabled(BdsLayoutId(BdsOrientation.Landscape, "en_26")))

@@ -10,6 +10,7 @@ import org.fcitx.fcitx5.android.data.theme.bds.BdsKey
 import org.fcitx.fcitx5.android.data.theme.bds.BdsKeyVariant
 import org.fcitx.fcitx5.android.data.theme.bds.BdsRect
 import org.fcitx.fcitx5.android.input.broadcast.ReturnKeyAction
+import org.fcitx.fcitx5.android.input.keyboard.bds.BdsCapsState
 import org.fcitx.fcitx5.android.input.keyboard.bds.BdsKeyStateResolver
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -67,13 +68,45 @@ class BdsKeyStateResolverTest {
         assertEquals(
             "TIP7",
             BdsKeyStateResolver.resolve(
-                shiftKey, ReturnKeyAction.Enter, listOf(capsVariant), caps = true
+                shiftKey, ReturnKeyAction.Enter, listOf(capsVariant),
+                capsState = BdsCapsState.Once
             )?.section
         )
         assertNull(
             BdsKeyStateResolver.resolve(
-                shiftKey, ReturnKeyAction.Enter, listOf(capsVariant), caps = false
+                shiftKey, ReturnKeyAction.Enter, listOf(capsVariant),
+                capsState = BdsCapsState.None
             )
+        )
+    }
+
+    @Test
+    fun resolvesCapsLockThroughShiftLayoutStatStyle() {
+        val shiftKey = returnKey.copy(
+            section = "KEY32",
+            properties = mapOf("STAT_STYLE" to "S2_2")
+        )
+        val lockVariant = BdsKeyVariant(
+            section = "TIP2",
+            backgroundStyle = 119,
+            foregroundStyles = listOf(131),
+            positionTypes = listOf(52),
+            actions = mapOf(BdsDirection.Center to BdsAction("F11")),
+            properties = emptyMap()
+        )
+
+        assertNull(
+            BdsKeyStateResolver.resolve(
+                shiftKey, ReturnKeyAction.Enter, listOf(lockVariant),
+                capsState = BdsCapsState.Once
+            )
+        )
+        assertEquals(
+            "TIP2",
+            BdsKeyStateResolver.resolve(
+                shiftKey, ReturnKeyAction.Enter, listOf(lockVariant),
+                capsState = BdsCapsState.Lock
+            )?.section
         )
     }
 }

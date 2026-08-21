@@ -8,6 +8,8 @@ import org.fcitx.fcitx5.android.data.theme.bds.BdsKey
 import org.fcitx.fcitx5.android.data.theme.bds.BdsKeyVariant
 import org.fcitx.fcitx5.android.input.broadcast.ReturnKeyAction
 
+enum class BdsCapsState { None, Once, Lock }
+
 /** Maps runtime keyboard state to the legacy Baidu STAT_STYLE state contract. */
 object BdsKeyStateResolver {
     // Confirmed by the Golden Sample's STAT_STYLE-to-TIP chain and the final
@@ -25,12 +27,14 @@ object BdsKeyStateResolver {
         key: BdsKey,
         action: ReturnKeyAction,
         variants: List<BdsKeyVariant>,
-        caps: Boolean = false
+        capsState: BdsCapsState = BdsCapsState.None
     ): BdsKeyVariant? {
         val targetStates = buildSet {
             editorState[action]?.let(::add)
-            // Golden Sample: KEY32 STAT_STYLE=S14_7 selects the active scallion.
-            if (caps) add(14)
+            // Shift layouts use S2 for the locked state. Older/general layouts
+            // expose S14 as their active Shift state, so retain it as a fallback.
+            if (capsState == BdsCapsState.Lock) add(2)
+            if (capsState != BdsCapsState.None) add(14)
         }
         if (targetStates.isEmpty()) return null
         val raw = key.properties.entries

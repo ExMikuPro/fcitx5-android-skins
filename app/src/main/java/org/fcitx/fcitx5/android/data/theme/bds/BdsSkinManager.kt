@@ -36,7 +36,9 @@ object BdsSkinManager {
     fun skinForTheme(themeName: String): BdsSkin? {
         val record = listInstalled().firstOrNull { it.themeName == themeName } ?: return null
         return parsedCache.getOrPut(record.id) {
-            BdsParser.parse(File(record.directory, "extracted"), record.id).also(::logUnsupported)
+            BdsParser.parse(
+                resolveBdsContentRoot(File(record.directory, "extracted")), record.id
+            ).also(::logUnsupported)
         }
     }
 
@@ -78,7 +80,7 @@ object BdsSkinManager {
             }
             val extracted = File(staging, "extracted")
             BdsArchiveReader.extract(archive, extracted)
-            val parsed = BdsParser.parse(extracted, id)
+            val parsed = BdsParser.parse(resolveBdsContentRoot(extracted), id)
             val baseThemeName = "${parsed.metadata.name} [BDS]"
             val occupied = ThemeManager.getAllThemes().map { it.name }.toSet() +
                 listInstalled().map { it.themeName }
@@ -90,7 +92,9 @@ object BdsSkinManager {
                 id, themeName, parsed.metadata.name, parsed.metadata.author, finalDir
             )
             writeRecord(record)
-            val installed = BdsParser.parse(File(finalDir, "extracted"), id)
+            val installed = BdsParser.parse(
+                resolveBdsContentRoot(File(finalDir, "extracted")), id
+            )
             parsedCache[id] = installed
             logUnsupported(installed)
             return record to themeFor(record, installed)
@@ -137,4 +141,19 @@ object BdsSkinManager {
     private fun logUnsupported(skin: BdsSkin) {
         skin.unsupportedProperties.forEach { Timber.d("BDS: $it") }
     }
+}
+
+/**
+ * Old BDS exporters normally put Info.txt at the archive root, while some desktop
+ * archive tools wrap the unchanged skin in one directory and add __MACOSX metadata.
+ */
+internal fun resolveBdsContentRoot(extractedRoot: File): File {
+    if (extractedRoot.childIgnoreCase("Info.txt") != null) return extractedRoot
+    val candidates = extractedRoot.listFiles().orEmpty().filter { child ->
+        child.isDirectory &&
+            !child.name.startsWith('.') &&
+            !child.name.equals("__MACOSX", ignoreCase = true) &&
+            child.childIgnoreCase("Info.txt") != null
+    }
+    return candidates.singleOrNull() ?: extractedRoot
 }

@@ -12,6 +12,7 @@ import org.fcitx.fcitx5.android.data.theme.bds.BdsCandidateParser
 import org.fcitx.fcitx5.android.data.theme.bds.BdsException
 import org.fcitx.fcitx5.android.data.theme.bds.BdsParser
 import org.fcitx.fcitx5.android.data.theme.bds.BdsOrientation
+import org.fcitx.fcitx5.android.data.theme.bds.resolveBdsContentRoot
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -29,6 +30,15 @@ class BdsParserTest {
     @After
     fun cleanup() {
         temp.deleteRecursively()
+    }
+
+    @Test
+    fun resolvesSkinWrappedByDesktopArchiveDirectory() {
+        File(temp, "__MACOSX").mkdirs()
+        val wrapped = File(temp, "skin-folder").also { it.mkdirs() }
+        File(wrapped, "Info.txt").writeText("Name=Wrapped")
+
+        assertEquals(wrapped, resolveBdsContentRoot(temp))
     }
 
     @Test
