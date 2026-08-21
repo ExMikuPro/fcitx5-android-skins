@@ -17,9 +17,14 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.tabs.TabLayoutMediator
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
+import org.fcitx.fcitx5.android.data.theme.Theme
+import org.fcitx.fcitx5.android.data.theme.bds.BdsPreviewImageLoader
+import org.fcitx.fcitx5.android.data.theme.bds.BdsPreviewState
+import org.fcitx.fcitx5.android.data.theme.bds.BdsSkinManager
 import splitties.dimensions.dp
 import splitties.resources.styledColor
 import splitties.views.backgroundColor
@@ -43,10 +48,12 @@ class ThemeFragment : Fragment() {
 
     private lateinit var viewPager: ViewPager2
 
+    private var bdsPreviewJob: Job? = null
+
     @Keep
     private val onThemeChangeListener = ThemeManager.OnThemeChangeListener {
         lifecycleScope.launch {
-            previewUi.setTheme(it)
+            setPreviewTheme(it)
         }
     }
 
@@ -56,6 +63,7 @@ class ThemeFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View = with(requireContext()) {
         previewUi = KeyboardPreviewUi(this, ThemeManager.activeTheme)
+        setPreviewTheme(ThemeManager.activeTheme)
         ThemeManager.addOnChangedListener(onThemeChangeListener)
         val preview = previewUi.root.apply {
             scaleX = 0.5f
@@ -122,7 +130,22 @@ class ThemeFragment : Fragment() {
     }
 
     override fun onDestroy() {
+        bdsPreviewJob?.cancel()
         ThemeManager.removeOnChangedListener(onThemeChangeListener)
         super.onDestroy()
+    }
+
+    private fun setPreviewTheme(theme: Theme) {
+        bdsPreviewJob?.cancel()
+        previewUi.setTheme(theme)
+        val bds = BdsSkinManager.recordForTheme(theme.name) ?: return
+        previewUi.setBdsPreview(null)
+        bdsPreviewJob = lifecycleScope.launch {
+            when (val state = BdsPreviewImageLoader.load(bds.archive)) {
+                is BdsPreviewState.Ready -> previewUi.setBdsPreview(state.bitmap)
+                BdsPreviewState.Loading, BdsPreviewState.Missing, BdsPreviewState.Error ->
+                    previewUi.setBdsPreview(null)
+            }
+        }
     }
 }

@@ -7,6 +7,7 @@ package org.fcitx.fcitx5.android.ui.main.settings.theme
 
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.view.View
@@ -15,7 +16,9 @@ import android.widget.ImageView
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
+import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
 import org.fcitx.fcitx5.android.data.theme.Theme
@@ -179,14 +182,27 @@ class KeyboardPreviewUi(override val ctx: Context, val theme: Theme) : Ui {
         bkg.imageDrawable = drawable
     }
 
+    /** Replaces the synthetic keyboard with a BDS demo image (or its loading placeholder). */
+    fun setBdsPreview(bitmap: Bitmap?) {
+        fakeKawaiiBar.isVisible = false
+        fakeKeyboardWindow.isVisible = false
+        if (bitmap == null) {
+            bkg.setImageResource(R.drawable.bkg_theme_choose_image)
+        } else {
+            bkg.setImageBitmap(bitmap)
+        }
+    }
+
     fun setTheme(theme: Theme, background: Drawable? = null) {
         setBackground(background ?: theme.backgroundDrawable(keyBorder))
         if (this::fakeKeyboardWindow.isInitialized) {
             fakeInputView.removeView(fakeKeyboardWindow)
         }
         fakeKawaiiBar.backgroundColor = if (keyBorder) Color.TRANSPARENT else theme.barColor
+        fakeKawaiiBar.isVisible = true
         fakeKeyboardWindow = TextKeyboard(ctx, theme).also {
             it.onAttach()
+            it.isVisible = true
         }
         fakeInputView.apply {
             add(fakeKeyboardWindow, lParams(matchConstraints, keyboardHeight) {
