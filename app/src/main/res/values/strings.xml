@@ -129,6 +129,10 @@
     <string name="import_from_file">Import from file…</string>
     <string name="import_bds_skin">Import BDS skin…</string>
     <string name="bds_skin_imported">Imported and enabled %1$s</string>
+    <string name="bds_skin_details">BDS skin details</string>
+    <string name="bds_skin_author">Author: %1$s</string>
+    <string name="bds_skin_description">Description: %1$s</string>
+    <string name="bds_skin_version">Version: %1$d</string>
     <string name="duplicate_builtin_theme">Duplicate builtin theme…</string>
     <string name="exception_logcat_created">Logcat process is already created</string>
     <string name="exception_quickphrase_parse">Failed to parse quick phrase line: %1$s</string>

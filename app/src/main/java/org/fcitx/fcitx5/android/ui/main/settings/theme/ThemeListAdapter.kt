@@ -144,6 +144,11 @@ abstract class ThemeListAdapter : RecyclerView.Adapter<ThemeListAdapter.ViewHold
 
     override fun getItemViewType(position: Int) = if (position == 0) ADD_THEME else THEME
 
+    override fun onViewRecycled(holder: ViewHolder) {
+        (holder.ui as? ThemeThumbnailUi)?.recycle()
+        super.onViewRecycled(holder)
+    }
+
     abstract fun onAddNewTheme()
 
     abstract fun onSelectTheme(theme: Theme)

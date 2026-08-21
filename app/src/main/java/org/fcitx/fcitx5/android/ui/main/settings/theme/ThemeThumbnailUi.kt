@@ -6,6 +6,7 @@ package org.fcitx.fcitx5.android.ui.main.settings.theme
 
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.ShapeDrawable
 import android.graphics.drawable.shapes.OvalShape
@@ -13,9 +14,19 @@ import android.os.Build
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.widget.ImageView
+import android.view.Gravity
 import androidx.core.view.isVisible
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.theme.Theme
+import org.fcitx.fcitx5.android.data.theme.bds.BdsPreviewImageLoader
+import org.fcitx.fcitx5.android.data.theme.bds.BdsPreviewState
+import org.fcitx.fcitx5.android.data.theme.bds.BdsSkinManager
 import org.fcitx.fcitx5.android.utils.rippleDrawable
 import splitties.dimensions.dp
 import splitties.views.backgroundColor
@@ -32,6 +43,7 @@ import splitties.views.dsl.core.Ui
 import splitties.views.dsl.core.add
 import splitties.views.dsl.core.imageView
 import splitties.views.dsl.core.matchParent
+import splitties.views.dsl.core.textView
 import splitties.views.dsl.core.view
 import splitties.views.imageDrawable
 import splitties.views.imageResource
@@ -67,6 +79,17 @@ class ThemeThumbnailUi(override val ctx: Context) : Ui {
         imageResource = R.drawable.ic_baseline_auto_awesome_24
     }
 
+    private val nameLabel = textView {
+        gravity = Gravity.CENTER
+        textSize = 12f
+        setTextColor(Color.WHITE)
+        setBackgroundColor(Color.argb(160, 0, 0, 0))
+        maxLines = 1
+    }
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var previewJob: Job? = null
+
     override val root = constraintLayout {
         outlineProvider = ViewOutlineProvider.BOUNDS
         elevation = dp(2f)
@@ -92,9 +115,13 @@ class ThemeThumbnailUi(override val ctx: Context) : Ui {
             topOfParent()
             startOfParent()
         })
+        add(nameLabel, lParams(matchParent, dp(24)) {
+            bottomOfParent()
+        })
     }
 
     fun setTheme(theme: Theme) {
+        previewJob?.cancel()
         root.apply {
             foreground = rippleDrawable(theme.keyPressHighlightColor)
         }
@@ -120,6 +147,45 @@ class ThemeThumbnailUi(override val ctx: Context) : Ui {
             imageTintList = foregroundTint
         }
         checkMark.imageTintList = foregroundTint
+        val bds = BdsSkinManager.recordForTheme(theme.name)
+        nameLabel.isVisible = bds != null
+        if (bds == null) {
+            bkg.alpha = 1f
+            bar.isVisible = true
+            spaceBar.isVisible = true
+            returnKey.isVisible = true
+            return
+        }
+        nameLabel.text = bds.name
+        bar.isVisible = false
+        spaceBar.isVisible = false
+        returnKey.isVisible = false
+        bkg.alpha = 0.65f
+        bkg.imageResource = R.drawable.bkg_theme_choose_image
+        previewJob = scope.launch {
+            when (val state = BdsPreviewImageLoader.load(bds.archive)) {
+                is BdsPreviewState.Ready -> {
+                    bkg.alpha = 1f
+                    bkg.setImageBitmap(state.bitmap)
+                }
+                BdsPreviewState.Loading -> Unit
+                BdsPreviewState.Missing, BdsPreviewState.Error -> {
+                    bkg.alpha = 1f
+                    bkg.imageResource = R.drawable.bkg_theme_choose_image
+                }
+            }
+        }
+    }
+
+    fun recycle() {
+        previewJob?.cancel()
+        previewJob = null
+        bkg.setImageDrawable(null)
+    }
+
+    fun destroy() {
+        recycle()
+        scope.cancel()
     }
 
     fun setChecked(checked: Boolean) {

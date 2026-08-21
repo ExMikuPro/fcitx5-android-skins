@@ -114,6 +114,9 @@ data class BdsMetadata(
     val author: String?,
     val description: String?,
     val versionCode: Int?,
+    val previewPath: String?,
+    val sourceId: String,
+    val sourcePath: String,
     val properties: Map<String, String>
 )
 

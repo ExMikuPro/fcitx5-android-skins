@@ -17,18 +17,21 @@ object BdsParser {
         "HOLDSYM" to BdsDirection.Hold
     )
 
-    fun parse(root: File, id: String = root.name): BdsSkin {
+    fun parse(
+        root: File,
+        id: String = root.name,
+        fallbackName: String = root.name,
+        sourcePath: String = root.absolutePath
+    ): BdsSkin {
         val infoFile = root.childIgnoreCase("Info.txt")
             ?: throw BdsException("BDS 缺少 Info.txt")
-        val info = parseFlatProperties(infoFile)
-        val name = info.value("Name")?.takeIf { it.isNotBlank() }
-            ?: throw BdsException("Info.txt 缺少皮肤名称")
-        val metadata = BdsMetadata(
-            name = name,
-            author = info.value("Author")?.takeIf { it.isNotBlank() },
-            description = info.value("Description")?.takeIf { it.isNotBlank() },
-            versionCode = info.value("VersionCode")?.toIntOrNull(),
-            properties = info
+        val demo = root.childIgnoreCase("demo.png")?.takeIf(File::isFile)
+        val metadata = BdsSkinMetadataParser.parse(
+            infoFile.readBytes(),
+            fallbackName.substringBeforeLast('.'),
+            demo?.absolutePath,
+            id,
+            sourcePath
         )
 
         val unsupported = mutableListOf<String>()

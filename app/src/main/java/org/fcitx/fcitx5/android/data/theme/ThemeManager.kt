@@ -13,6 +13,7 @@ import androidx.preference.PreferenceManager
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreferenceProvider
 import org.fcitx.fcitx5.android.data.theme.ThemeManager.activeTheme
+import org.fcitx.fcitx5.android.data.theme.bds.BdsSkinManager
 import org.fcitx.fcitx5.android.utils.WeakHashSet
 import org.fcitx.fcitx5.android.utils.appContext
 import org.fcitx.fcitx5.android.utils.isDarkMode
@@ -95,6 +96,7 @@ object ThemeManager {
     }
 
     fun deleteTheme(name: String) {
+        BdsSkinManager.deleteForTheme(name)
         customThemes.find { it.name == name }?.also {
             ThemeFilesManager.deleteThemeFiles(it)
             customThemes.remove(it)

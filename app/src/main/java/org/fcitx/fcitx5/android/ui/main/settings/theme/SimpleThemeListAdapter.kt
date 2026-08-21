@@ -46,5 +46,10 @@ open class SimpleThemeListAdapter<T : Theme>(private val entries: List<T>) :
 
     override fun getItemCount(): Int = entries.size
 
+    override fun onViewRecycled(holder: ViewHolder) {
+        (holder.ui as? ThemeThumbnailUi)?.recycle()
+        super.onViewRecycled(holder)
+    }
+
     open fun onClick(theme: T) {}
 }

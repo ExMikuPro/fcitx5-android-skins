@@ -8,6 +8,9 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.Keep
@@ -15,6 +18,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fcitx.fcitx5.android.R
@@ -22,12 +26,15 @@ import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeFilesManager
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.data.theme.bds.BdsSkinManager
+import org.fcitx.fcitx5.android.data.theme.bds.BdsPreviewImageLoader
+import org.fcitx.fcitx5.android.data.theme.bds.BdsPreviewState
 import org.fcitx.fcitx5.android.ui.common.withLoadingDialog
 import org.fcitx.fcitx5.android.utils.applyNavBarInsetsBottomPadding
 import org.fcitx.fcitx5.android.utils.importErrorDialog
 import org.fcitx.fcitx5.android.utils.queryFileName
 import org.fcitx.fcitx5.android.utils.toast
 import splitties.resources.styledDrawable
+import splitties.dimensions.dp
 import java.util.UUID
 
 class ThemeListFragment : Fragment() {
@@ -253,7 +260,70 @@ class ThemeListFragment : Fragment() {
     }
 
     private fun editTheme(theme: Theme.Custom) {
+        val bds = BdsSkinManager.recordForTheme(theme.name)
+        if (bds != null) {
+            showBdsDetails(theme, bds)
+            return
+        }
         imageLauncher.launch(theme)
+    }
+
+    private fun showBdsDetails(theme: Theme.Custom, record: BdsSkinManager.InstalledSkin) {
+        val ctx = requireContext()
+        val preview = ImageView(ctx).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setImageResource(R.drawable.bkg_theme_choose_image)
+        }
+        val details = TextView(ctx).apply {
+            text = record.name
+            textSize = 16f
+            setPadding(0, ctx.dp(12), 0, 0)
+        }
+        val content = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(ctx.dp(20), ctx.dp(8), ctx.dp(20), 0)
+            addView(preview, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ctx.dp(220)
+            ))
+            addView(details, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
+        }
+        AlertDialog.Builder(ctx)
+            .setTitle(R.string.bds_skin_details)
+            .setView(content)
+            .setPositiveButton(android.R.string.ok, null)
+            .setNegativeButton(R.string.delete_theme) { _, _ ->
+                AlertDialog.Builder(ctx)
+                    .setTitle(R.string.delete_theme)
+                    .setMessage(getString(R.string.delete_theme_msg, theme.name))
+                    .setPositiveButton(android.R.string.ok) { _, _ ->
+                        themeListAdapter.removeTheme(theme.name)
+                        ThemeManager.deleteTheme(theme.name)
+                    }
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show()
+            }
+            .show()
+        lifecycleScope.launch {
+            val metadata = async(Dispatchers.IO) {
+                runCatching { BdsSkinManager.metadataForTheme(theme.name) }.getOrNull()
+            }
+            val image = async { BdsPreviewImageLoader.load(record.archive) }
+            metadata.await()?.let { info ->
+                details.text = buildList {
+                    add(info.name)
+                    info.author?.let { add(getString(R.string.bds_skin_author, it)) }
+                    info.description?.let { add(getString(R.string.bds_skin_description, it)) }
+                    info.versionCode?.let { add(getString(R.string.bds_skin_version, it)) }
+                }.joinToString("\n")
+            }
+            when (val state = image.await()) {
+                is BdsPreviewState.Ready -> preview.setImageBitmap(state.bitmap)
+                BdsPreviewState.Loading, BdsPreviewState.Missing, BdsPreviewState.Error ->
+                    preview.setImageResource(R.drawable.bkg_theme_choose_image)
+            }
+        }
     }
 
     private fun exportTheme(theme: Theme.Custom) {
