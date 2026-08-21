@@ -128,14 +128,21 @@ class BdsCandidateRenderer(
             val s = scale(width)
             val padding = definition.padding
             val contentLeft = ((layout.viewRect.x + padding.left) * s).roundToInt()
-            val contentTop = ((layout.viewRect.y + padding.top) * s).roundToInt()
+            // The background artwork can be taller than CAND.VIEW_RECT (this skin's
+            // Miku artwork is 158 units high while the candidate row is 121). The
+            // legacy renderer pins the interactive row to the bottom of that
+            // surface, leaving the artwork itself at its original top coordinate.
+            // Centering the controls instead creates an empty strip immediately
+            // above the first keyboard row.
+            val requestedContentTop = ((layout.viewRect.y + padding.top) * s).roundToInt()
+            val contentTop = maxOf(requestedContentTop, height - candidates.measuredHeight)
             candidates.layout(
                 contentLeft,
                 contentTop,
                 contentLeft + candidates.measuredWidth,
                 contentTop + candidates.measuredHeight
             )
-            val buttonTop = (height - expandButton.measuredHeight) / 2
+            val buttonTop = height - expandButton.measuredHeight
             expandButton.layout(
                 width - expandButton.measuredWidth,
                 buttonTop,

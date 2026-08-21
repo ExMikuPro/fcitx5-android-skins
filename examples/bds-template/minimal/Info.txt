@@ -1,0 +1,5 @@
+﻿Name=BDS Minimal Template
+Author=Fcitx5 Android Contributors
+Description=Original geometric BDS template generated from source.
+VersionCode=1
+Style=default

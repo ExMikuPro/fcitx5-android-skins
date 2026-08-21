@@ -1,6 +1,6 @@
 /*
  * SPDX-License-Identifier: LGPL-2.1-or-later
- * SPDX-FileCopyrightText: Copyright 2021-2025 Fcitx5 for Android Contributors
+ * SPDX-FileCopyrightText: Copyright 2021-2026 Fcitx5 for Android Contributors
  */
 package org.fcitx.fcitx5.android.data
 
@@ -55,6 +55,7 @@ object UserDataManager {
     private val dataBasesDir = File(appContext.applicationInfo.dataDir, "databases")
     private val externalDir = appContext.getExternalFilesDir(null)!!
     private val recentlyUsedDir = appContext.filesDir.resolve(RecentlyUsed.DIR_NAME)
+    private val skinsDir = appContext.filesDir.resolve("skins")
 
     @OptIn(ExperimentalSerializationApi::class)
     fun export(dest: OutputStream, timestamp: Long = System.currentTimeMillis()) = runCatching {
@@ -65,6 +66,10 @@ object UserDataManager {
             writeFileTree(dataBasesDir, "databases", zipStream)
             // external
             writeFileTree(externalDir, "external", zipStream)
+            // Imported skins live in internal storage instead of external/theme.
+            // Keep the complete tree so BDS archives, extracted resources and
+            // their theme-name index can be restored without re-importing them.
+            writeFileTree(skinsDir, "files/skins", zipStream)
             // recently_used moved to SharedPreference and shoud not be exported
             // metadata
             zipStream.putNextEntry(ZipEntry("metadata.json"))
@@ -102,6 +107,9 @@ object UserDataManager {
                 copyDir(File(tempDir, "shared_prefs"), sharedPrefsDir)
                 copyDir(File(tempDir, "databases"), dataBasesDir)
                 copyDir(File(tempDir, "external"), externalDir)
+                // Optional for backwards compatibility with exports created
+                // before imported skins were included in user data.
+                copyDir(File(tempDir, "files/skins"), skinsDir)
                 // keep importing recently_used for backwords compatibility
                 copyDir(File(tempDir, "recently_used"), recentlyUsedDir)
                 metadata

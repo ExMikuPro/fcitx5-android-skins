@@ -41,6 +41,19 @@ object BdsLayoutResolver {
             baseNames
         }
         return candidates.firstNotNullOfOrNull { skin.layout(orientation, it) }
+            // A number of real BDS archives are portrait-only. Rendering their
+            // portrait coordinates is safer and more useful than silently
+            // dropping back to an unrelated non-BDS keyboard on rotation.
+            ?: candidates.firstNotNullOfOrNull {
+                skin.layout(
+                    if (orientation == BdsOrientation.Portrait) {
+                        BdsOrientation.Landscape
+                    } else {
+                        BdsOrientation.Portrait
+                    },
+                    it
+                )
+            }
     }
 
     private fun textLayoutNames(ime: InputMethodEntry?): List<String> {

@@ -554,7 +554,9 @@ private class BdsKeyView(
         if (!isDecoration) {
             id = View.generateViewId()
             val centerAction = key.actions[BdsDirection.Center]
-            setOnClickListener { centerAction?.let(onAction) }
+            setOnClickListener {
+                currentAction(BdsDirection.Center)?.let(onAction)
+            }
             if (isBdsCapsAction(centerAction)) {
                 doubleTapEnabled = true
                 onDoubleTapListener = { onCapsLock() }
@@ -563,28 +565,33 @@ private class BdsKeyView(
                 soundEffect = InputFeedbacks.SoundEffect.Delete
                 repeatEnabled = true
                 onRepeatListener = { view ->
-                    centerAction?.let(onAction)
+                    currentAction(BdsDirection.Center)?.let(onAction)
                     if (hapticOnRepeat) InputFeedbacks.hapticFeedback(view)
                 }
             }
             val holdAction = key.actions[BdsDirection.Hold]
+                ?: shiftedKey?.actions?.get(BdsDirection.Hold)
             val hasPopupPreset = bdsPopupPresetLabel(
                 key.actions[BdsDirection.Center], false
-            ) != null || bdsPopupPresetLabel(key.actions[BdsDirection.Center], true) != null
+            ) != null || bdsPopupPresetLabel(
+                shiftedKey?.actions?.get(BdsDirection.Center)
+                    ?: key.actions[BdsDirection.Center],
+                true
+            ) != null
             if (holdAction != null || hasPopupPreset) {
                 setOnLongClickListener {
                     val label = bdsPopupPresetLabel(
-                        key.actions[BdsDirection.Center], capsState != BdsCapsState.None
+                        currentAction(BdsDirection.Center), capsState != BdsCapsState.None
                     )
                     if (label != null) {
                         onShowCharacterPopup(id, label, popupBounds())
                         // Match BaseKeyboard: keep receiving move/up for selection.
                         false
-                    } else if (holdAction != null) {
-                        onAction(holdAction)
-                        true
                     } else {
-                        false
+                        currentAction(BdsDirection.Hold)?.let {
+                            onAction(it)
+                            true
+                        } ?: false
                     }
                 }
             }
@@ -604,7 +611,7 @@ private class BdsKeyView(
                                 threshold,
                                 swipeSymbolDirection
                             )
-                            direction?.let(key.actions::get)?.let {
+                            direction?.let(::currentAction)?.let {
                                 onAction(it)
                                 true
                             } ?: false
@@ -617,6 +624,9 @@ private class BdsKeyView(
             }
         }
     }
+
+    private fun currentAction(direction: BdsDirection): BdsAction? =
+        resolveBdsKeyAction(key, shiftedKey, capsState, direction)
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
@@ -865,6 +875,18 @@ internal fun resolveBdsSwipeDirection(
     }
     return BdsDirection.Up.takeIf { matchesPreference }
 }
+
+/** Resolve input from the same layout that supplies the visible key foreground. */
+internal fun resolveBdsKeyAction(
+    key: BdsKey,
+    shiftedKey: BdsKey?,
+    capsState: BdsCapsState,
+    direction: BdsDirection
+): BdsAction? = shiftedKey
+    ?.takeIf { capsState != BdsCapsState.None }
+    ?.actions
+    ?.get(direction)
+    ?: key.actions[direction]
 
 internal object BdsDrawing {
     fun drawTile(

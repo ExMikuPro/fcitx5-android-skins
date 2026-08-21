@@ -12,6 +12,7 @@ import org.fcitx.fcitx5.android.data.theme.bds.BdsRect
 import org.fcitx.fcitx5.android.input.broadcast.ReturnKeyAction
 import org.fcitx.fcitx5.android.input.keyboard.bds.BdsCapsState
 import org.fcitx.fcitx5.android.input.keyboard.bds.BdsKeyStateResolver
+import org.fcitx.fcitx5.android.input.keyboard.bds.resolveBdsKeyAction
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -107,6 +108,38 @@ class BdsKeyStateResolverTest {
                 shiftKey, ReturnKeyAction.Enter, listOf(lockVariant),
                 capsState = BdsCapsState.Lock
             )?.section
+        )
+    }
+
+    @Test
+    fun resolvesSwipeActionFromVisibleShiftLayout() {
+        val base = returnKey.copy(
+            actions = mapOf(BdsDirection.Up to BdsAction("base-symbol"))
+        )
+        val shifted = returnKey.copy(
+            actions = mapOf(BdsDirection.Up to BdsAction("shift-symbol"))
+        )
+
+        assertEquals(
+            "base-symbol",
+            resolveBdsKeyAction(base, shifted, BdsCapsState.None, BdsDirection.Up)?.raw
+        )
+        assertEquals(
+            "shift-symbol",
+            resolveBdsKeyAction(base, shifted, BdsCapsState.Lock, BdsDirection.Up)?.raw
+        )
+    }
+
+    @Test
+    fun shiftedLayoutMissingSwipeActionFallsBackToBaseLayout() {
+        val base = returnKey.copy(
+            actions = mapOf(BdsDirection.Up to BdsAction("base-symbol"))
+        )
+        val shifted = returnKey.copy(actions = emptyMap())
+
+        assertEquals(
+            "base-symbol",
+            resolveBdsKeyAction(base, shifted, BdsCapsState.Lock, BdsDirection.Up)?.raw
         )
     }
 }
