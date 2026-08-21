@@ -19,6 +19,7 @@ import org.fcitx.fcitx5.android.daemon.FcitxConnection
 import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
+import org.fcitx.fcitx5.android.data.theme.bds.BdsToolbarAction
 import org.fcitx.fcitx5.android.input.FcitxInputMethodService
 import org.fcitx.fcitx5.android.input.bar.ui.ToolButton
 import org.fcitx.fcitx5.android.input.broadcast.InputBroadcastReceiver
@@ -60,12 +61,14 @@ class StatusAreaWindow : InputWindow.ExtendedInputWindow<StatusAreaWindow>(),
             StatusAreaEntry.Android(
                 context.getString(R.string.theme),
                 R.drawable.ic_baseline_palette_24,
-                ThemeList
+                ThemeList,
+                BdsToolbarAction.Theme
             ),
             StatusAreaEntry.Android(
                 context.getString(R.string.input_method_options),
                 R.drawable.ic_baseline_language_24,
-                InputMethod
+                InputMethod,
+                BdsToolbarAction.InputMethod
             ),
             StatusAreaEntry.Android(
                 context.getString(R.string.reload_config),
@@ -75,7 +78,8 @@ class StatusAreaWindow : InputWindow.ExtendedInputWindow<StatusAreaWindow>(),
             StatusAreaEntry.Android(
                 context.getString(R.string.virtual_keyboard),
                 R.drawable.ic_baseline_keyboard_24,
-                Keyboard
+                Keyboard,
+                BdsToolbarAction.Keyboard
             )
         )
     }
@@ -189,7 +193,9 @@ class StatusAreaWindow : InputWindow.ExtendedInputWindow<StatusAreaWindow>(),
     }
 
     private val settingsButton by lazy {
-        ToolButton(context, R.drawable.ic_baseline_settings_24, theme).apply {
+        ToolButton(
+            context, R.drawable.ic_baseline_settings_24, theme, BdsToolbarAction.Settings
+        ).apply {
             contentDescription = context.getString(R.string.open_input_method_settings)
             setOnClickListener { AppUtil.launchMain(context) }
         }

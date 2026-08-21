@@ -11,6 +11,7 @@ import com.google.android.flexbox.FlexboxLayout
 import com.google.android.flexbox.JustifyContent
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.theme.Theme
+import org.fcitx.fcitx5.android.data.theme.bds.BdsToolbarAction
 import org.fcitx.fcitx5.android.input.bar.ui.ToolButton
 import splitties.dimensions.dp
 import splitties.views.dsl.core.Ui
@@ -23,7 +24,10 @@ class ButtonsBarUi(override val ctx: Context, private val theme: Theme) : Ui {
         justifyContent = JustifyContent.SPACE_AROUND
     }
 
-    private fun toolButton(@DrawableRes icon: Int) = ToolButton(ctx, icon, theme).also {
+    private fun toolButton(
+        @DrawableRes icon: Int,
+        action: BdsToolbarAction? = null
+    ) = ToolButton(ctx, icon, theme, action).also {
         val size = ctx.dp(40)
         root.addView(it, FlexboxLayout.LayoutParams(size, size))
     }
@@ -36,15 +40,21 @@ class ButtonsBarUi(override val ctx: Context, private val theme: Theme) : Ui {
         contentDescription = ctx.getString(R.string.redo)
     }
 
-    val cursorMoveButton = toolButton(R.drawable.ic_cursor_move).apply {
+    val cursorMoveButton = toolButton(
+        R.drawable.ic_cursor_move, BdsToolbarAction.TextEditing
+    ).apply {
         contentDescription = ctx.getString(R.string.text_editing)
     }
 
-    val clipboardButton = toolButton(R.drawable.ic_clipboard).apply {
+    val clipboardButton = toolButton(
+        R.drawable.ic_clipboard, BdsToolbarAction.Clipboard
+    ).apply {
         contentDescription = ctx.getString(R.string.clipboard)
     }
 
-    val moreButton = toolButton(R.drawable.ic_baseline_more_horiz_24).apply {
+    val moreButton = toolButton(
+        R.drawable.ic_baseline_more_horiz_24, BdsToolbarAction.MoreMenu
+    ).apply {
         contentDescription = ctx.getString(R.string.status_area)
     }
 

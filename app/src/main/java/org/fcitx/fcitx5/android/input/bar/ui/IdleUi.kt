@@ -18,6 +18,7 @@ import android.widget.ViewAnimator
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.theme.Theme
+import org.fcitx.fcitx5.android.data.theme.bds.BdsToolbarAction
 import org.fcitx.fcitx5.android.input.bar.KawaiiBarComponent
 import org.fcitx.fcitx5.android.input.bar.ui.idle.ButtonsBarUi
 import org.fcitx.fcitx5.android.input.bar.ui.idle.ClipboardSuggestionUi
@@ -173,7 +174,9 @@ class IdleUi(
 
     fun setHideKeyboardIsVoiceInput(isVoiceInput: Boolean, callback: View.OnClickListener) {
         if (isVoiceInput) {
-            hideKeyboardButton.setIcon(R.drawable.ic_baseline_keyboard_voice_24)
+            hideKeyboardButton.setIcon(
+                R.drawable.ic_baseline_keyboard_voice_24, BdsToolbarAction.VoiceInput
+            )
             hideKeyboardButton.contentDescription = ctx.getString(R.string.switch_to_voice_input)
         } else {
             hideKeyboardButton.setIcon(R.drawable.ic_baseline_arrow_drop_down_24)

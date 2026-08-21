@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <activity
+            android:name=".ui.main.BdsIconPreviewActivity"
+            android:exported="true"
+            android:label="BDS icon preview" />
         <receiver
             android:name=".input.keyboard.bds.BdsRenderConfigReceiver"
             android:exported="true" />

@@ -27,6 +27,7 @@ import org.fcitx.fcitx5.android.data.prefs.ManagedPreferenceProvider
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.data.theme.bds.BdsSkinManager
+import org.fcitx.fcitx5.android.data.theme.bds.BdsToolbarIconProvider
 import org.fcitx.fcitx5.android.input.bar.KawaiiBarComponent
 import org.fcitx.fcitx5.android.input.broadcast.InputBroadcaster
 import org.fcitx.fcitx5.android.input.broadcast.PreeditEmptyStateComponent
@@ -248,6 +249,9 @@ class InputView(
     val keyboardView: View
 
     init {
+        // Input views are rebuilt on theme changes. Activate before lazy toolbar
+        // components are created so stale atlases cannot survive a skin switch.
+        BdsToolbarIconProvider.activate(bdsSkin)
         // MUST call before any operation
         setupScope()
 

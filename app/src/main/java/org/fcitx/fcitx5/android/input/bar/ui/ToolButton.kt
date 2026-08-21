@@ -12,6 +12,8 @@ import androidx.annotation.ColorInt
 import androidx.annotation.DrawableRes
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.theme.Theme
+import org.fcitx.fcitx5.android.data.theme.bds.BdsToolbarAction
+import org.fcitx.fcitx5.android.data.theme.bds.BdsToolbarIconProvider
 import org.fcitx.fcitx5.android.input.keyboard.CustomGestureView
 import org.fcitx.fcitx5.android.utils.borderlessRippleDrawable
 import org.fcitx.fcitx5.android.utils.circlePressHighlightDrawable
@@ -36,6 +38,7 @@ class ToolButton(context: Context) : CustomGestureView(context) {
         padding = dp(10)
         scaleType = ImageView.ScaleType.CENTER_INSIDE
     }
+    private var defaultTint: ColorStateList? = null
 
     var iconRotation: Float
         get() = image.rotation
@@ -43,9 +46,14 @@ class ToolButton(context: Context) : CustomGestureView(context) {
             image.rotation = value
         }
 
-    constructor(context: Context, @DrawableRes icon: Int, theme: Theme) : this(context) {
-        image.imageTintList = ColorStateList.valueOf(theme.altKeyTextColor)
-        setIcon(icon)
+    constructor(
+        context: Context,
+        @DrawableRes icon: Int,
+        theme: Theme,
+        bdsAction: BdsToolbarAction? = null
+    ) : this(context) {
+        defaultTint = ColorStateList.valueOf(theme.altKeyTextColor)
+        setIcon(icon, bdsAction)
         setPressHighlightColor(theme.keyPressHighlightColor)
         add(image, lParams(wrapContent, wrapContent, gravityCenter))
     }
@@ -53,6 +61,18 @@ class ToolButton(context: Context) : CustomGestureView(context) {
     fun iconAnimate(): ViewPropertyAnimator = image.animate()
 
     fun setIcon(@DrawableRes icon: Int) {
+        setIcon(icon, null)
+    }
+
+    fun setIcon(@DrawableRes icon: Int, bdsAction: BdsToolbarAction?) {
+        val bdsDrawable = bdsAction?.let {
+            BdsToolbarIconProvider.drawable(resources, it)
+        }
+        image.imageTintList = if (bdsDrawable == null) defaultTint else null
+        if (bdsDrawable != null) {
+            image.setImageDrawable(bdsDrawable)
+            return
+        }
         image.imageResource = icon
     }
 

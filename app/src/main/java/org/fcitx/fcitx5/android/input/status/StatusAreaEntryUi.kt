@@ -15,6 +15,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import org.fcitx.fcitx5.android.data.theme.Theme
+import org.fcitx.fcitx5.android.data.theme.bds.BdsToolbarIconProvider
 import org.fcitx.fcitx5.android.input.AutoScaleTextView
 import org.fcitx.fcitx5.android.input.keyboard.CustomGestureView
 import splitties.dimensions.dp
@@ -95,10 +96,13 @@ class StatusAreaEntryUi(override val ctx: Context, private val theme: Theme) : U
     fun setEntry(entry: StatusAreaEntry) {
         val contentColor =
             if (entry.active) theme.genericActiveForegroundColor else theme.keyTextColor
-        if (entry.icon != 0) {
+        val bdsDrawable = entry.bdsAction?.let {
+            BdsToolbarIconProvider.drawable(ctx.resources, it)
+        }
+        if (bdsDrawable != null || entry.icon != 0) {
             icon.visibility = View.VISIBLE
             textIcon.visibility = View.GONE
-            icon.imageDrawable = ctx.drawable(entry.icon)!!.apply {
+            icon.imageDrawable = bdsDrawable ?: ctx.drawable(entry.icon)!!.apply {
                 setTint(contentColor)
             }
         } else {

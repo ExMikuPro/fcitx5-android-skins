@@ -7,15 +7,21 @@ package org.fcitx.fcitx5.android.input.status
 import androidx.annotation.DrawableRes
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.Action
+import org.fcitx.fcitx5.android.data.theme.bds.BdsToolbarAction
 
 sealed class StatusAreaEntry(
     val label: String,
     @DrawableRes
     val icon: Int,
-    val active: Boolean
+    val active: Boolean,
+    val bdsAction: BdsToolbarAction? = null
 ) {
-    class Android(label: String, icon: Int, val type: Type) :
-        StatusAreaEntry(label, icon, false) {
+    class Android(
+        label: String,
+        icon: Int,
+        val type: Type,
+        bdsAction: BdsToolbarAction? = null
+    ) : StatusAreaEntry(label, icon, false, bdsAction) {
         enum class Type {
             InputMethod,
             ReloadConfig,

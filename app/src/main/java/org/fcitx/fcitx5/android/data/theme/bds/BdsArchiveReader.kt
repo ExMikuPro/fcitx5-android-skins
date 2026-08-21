@@ -13,6 +13,7 @@ import java.util.zip.ZipInputStream
 object BdsArchiveReader {
     const val MAX_ARCHIVE_BYTES = 32L * 1024 * 1024
     const val MAX_EXTRACTED_BYTES = 64L * 1024 * 1024
+    const val MAX_ENTRY_BYTES = 16L * 1024 * 1024
     const val MAX_ENTRIES = 4096
 
     fun hasZipMagic(file: File): Boolean {
@@ -54,12 +55,17 @@ object BdsArchiveReader {
                         output.mkdirs()
                     } else {
                         output.parentFile?.mkdirs()
+                        var entryBytes = 0L
                         output.outputStream().buffered().use { stream ->
                             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                             while (true) {
                                 val read = zip.read(buffer)
                                 if (read < 0) break
+                                entryBytes += read
                                 totalBytes += read
+                                if (entryBytes > MAX_ENTRY_BYTES) {
+                                    throw BdsException("BDS 单个资源解压后体积超过限制")
+                                }
                                 if (totalBytes > MAX_EXTRACTED_BYTES) {
                                     throw BdsException("BDS 解压后体积超过限制")
                                 }

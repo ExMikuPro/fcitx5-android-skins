@@ -4,6 +4,7 @@
  */
 package org.fcitx.fcitx5.android.ui.main
 
+import android.content.Intent
 import android.os.Bundle
 import android.os.Debug
 import androidx.activity.result.ActivityResultLauncher
@@ -14,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.fcitx.fcitx5.android.BuildConfig
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.data.DataManager
 import org.fcitx.fcitx5.android.daemon.FcitxDaemon
@@ -64,6 +66,16 @@ class DeveloperFragment : PaddingPreferenceFragment() {
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         preferenceScreen = preferenceManager.createPreferenceScreen(requireContext()).apply {
+            if (BuildConfig.DEBUG) {
+                addPreference("BDS toolbar icon preview") {
+                    startActivity(
+                        Intent().setClassName(
+                            context,
+                            "org.fcitx.fcitx5.android.ui.main.BdsIconPreviewActivity"
+                        )
+                    )
+                }
+            }
             addPreference(R.string.real_time_logs) {
                 startActivity<LogActivity>()
             }
